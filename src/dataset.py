@@ -219,7 +219,10 @@ def _discover_canned_signatures(
         for i in range(0, max(1, len(body) - min_len), step):
             sub = body[i:i + min_len]
             if len(sub) >= min_len:
-                sub_freq[sub] += 1
+                # Skip substrings containing URLs — these are survey links,
+                # not canned phrases, and stripping them breaks legitimate URLs
+                if "http" not in sub and "www." not in sub:
+                    sub_freq[sub] += 1
 
     signatures = {s for s, c in sub_freq.items() if c >= min_freq}
 
@@ -234,7 +237,8 @@ def _discover_canned_signatures(
             for i in range(0, max(1, len(body) - _SHORT_CANNED_MIN_LEN), step):
                 sub = body[i:i + _SHORT_CANNED_MIN_LEN]
                 if len(sub) >= _SHORT_CANNED_MIN_LEN:
-                    short_freq[sub] += 1
+                    if "http" not in sub and "www." not in sub:
+                        short_freq[sub] += 1
 
         short_sigs = {s for s, c in short_freq.items() if c >= _SHORT_CANNED_MIN_FREQ}
         if short_sigs:

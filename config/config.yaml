@@ -23,13 +23,14 @@ dataset:
         - "Surachai Uthaisamairath"
         - "Support Team"
     clean_attachments: true # strip attachment metadata (URL/Type/Size)
-    clean_urls: true # replace long URLs with [link]
+    clean_urls: false # replace long URLs with [link]
     dedupe_canned: true # remove repeated canned closing messages
     dedupe_exact: true # cross-conversation exact duplicate removal
     max_duplicate_count: 3 # keep max N copies of identical messages
     dedupe_sentences: true # sentence-level dedup across conversations
     filter_sentences: # exact sentences to filter (populate after analysis)
         - "หากพี่มนุษย์ต้องการสอบถามข้อมูลเพิ่มเติม สามารถฝากข้อความไว้ได้ตลอดเวลาและทางทีมงานจะเร่งติดต่อกลับในเวลาทำการ จันทร์-ศุกร์ 9:00-18:00น."
+        - "ต้องขออภัยที่มาตอบช้าด้วยนะฮะเนื่องจากเวลาทำการของทีมงานจะเป็นวันจันทร์-ศุกร์ 09. 00-18. 00 (ยกเว้นวันหยุด) น่ะฮะ"
     # Run `uv run python run_prepare.py --analyze` to discover candidates
     clean_fillers: true # strip trailing filler particles (ครับ/ค่ะ/ฮะ/etc)
     drop_filler_only: true # drop messages that are nothing but filler words
