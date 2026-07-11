@@ -123,6 +123,70 @@ def _is_sunshine_format(comments: list[dict[str, Any]]) -> bool:
 
 
 # ---------------------------------------------------------------
+# Message cleanup
+# ---------------------------------------------------------------
+
+# Matches attachment metadata block: "filename\nURL: ...\nType: ...\nSize: ..."
+_ATTACHMENT_META_RE = re.compile(
+    r"[\w.-]+\.(?:jpe?g|png|gif|mp4|pdf|webp|bmp)\n"
+    r"URL:\s*https?://[^\n]+\n"
+    r"Type:\s*[^\n]+\n"
+    r"Size:\s*\d+"
+)
+
+# Matches a standalone full URL (http/https)
+_URL_RE = re.compile(r"https?://\S+")
+
+# Canned closing message pattern
+_CANNED_PATTERNS = [
+    "หากพี่มนุษย์ต้องการสอบถามข้อมูลเพิ่มเติม",
+    "สามารถฝากข้อความไว้ได้ตลอดเวลา",
+]
+
+
+def _is_canned(body: str) -> bool:
+    """Return True if the message matches a known canned/closing template."""
+    for pattern in _CANNED_PATTERNS:
+        if pattern in body:
+            return True
+    return False
+
+
+def _clean_message(
+    body: str,
+    clean_attachments: bool = True,
+    clean_urls: bool = True,
+    dedupe_canned: bool = True,
+    canned_seen: set[str] | None = None,
+) -> str | None:
+    """Clean a message body for training quality.
+
+    Returns the cleaned body, or None if the message should be dropped.
+    """
+    if clean_attachments:
+        # Strip attachment metadata blocks
+        body = _ATTACHMENT_META_RE.sub("[image]", body).strip()
+
+        # Collapse multiple [image] placeholders
+        body = re.sub(r"(\[image\]\s*){2,}", "[images]", body)
+
+    if clean_urls:
+        # Replace standalone URLs with [link]
+        body = _URL_RE.sub("[link]", body)
+
+    # Remove repeated [image] [link] noise
+    body = re.sub(r"^\[image\]\s*", "", body)
+    body = re.sub(r"^\[link\]\s*", "", body)
+
+    if dedupe_canned and canned_seen is not None and _is_canned(body):
+        if body in canned_seen:
+            return None  # drop duplicate canned message
+        canned_seen.add(body)
+
+    return body.strip()
+
+
+# ---------------------------------------------------------------
 # Conversation Builder — Module 2  (FR-101 through FR-107)
 # ---------------------------------------------------------------
 
@@ -157,6 +221,10 @@ def _classify_sunshine(
 def build_conversation(
     ticket: dict[str, Any],
     agent_names: set[str] | None = None,
+    clean_attachments: bool = True,
+    clean_urls: bool = True,
+    dedupe_canned: bool = True,
+    min_length: int = 3,
 ) -> dict[str, Any] | None:
     """Convert a single raw ticket JSON into a conversation object.
 
@@ -195,6 +263,8 @@ def build_conversation(
 
     # Build turns — FR-103 (merge consecutive same-role), FR-106 (order)
     merged: list[dict[str, Any]] = []
+    canned_seen: set[str] = set()
+
     for comment in filtered:
         body = comment["body"].strip()
         author_id = comment.get("author_id")
@@ -208,8 +278,20 @@ def build_conversation(
             sub_messages = [(role, body)]
 
         for role, clean_body in sub_messages:
+            # Apply quality cleanup
+            clean_body = _clean_message(
+                clean_body,
+                clean_attachments=clean_attachments,
+                clean_urls=clean_urls,
+                dedupe_canned=dedupe_canned,
+                canned_seen=canned_seen,
+            )
+
             if not clean_body:
-                continue  # FR-105: skip after strip
+                continue  # dropped by cleanup
+
+            if len(clean_body) < min_length:
+                continue  # FR-105: too short
 
             if merged and merged[-1]["role"] == role:
                 merged[-1]["content"] += "\n" + clean_body
@@ -284,6 +366,10 @@ def generate_dataset(
     shuffle_seed: int = 42,
     system_prompt: str = "",
     agent_names: list[str] | None = None,
+    clean_attachments: bool = True,
+    clean_urls: bool = True,
+    dedupe_canned: bool = True,
+    min_message_length: int = 3,
 ) -> dict[str, Any]:
     """Build conversations from raw tickets and generate train/valid JSONL files.
 
@@ -315,7 +401,14 @@ def generate_dataset(
             skipped += 1
             continue
 
-        conv = build_conversation(ticket, agent_names=set(agent_names or []))
+        conv = build_conversation(
+            ticket,
+            agent_names=set(agent_names or []),
+            clean_attachments=clean_attachments,
+            clean_urls=clean_urls,
+            dedupe_canned=dedupe_canned,
+            min_length=min_message_length,
+        )
         if conv:
             conversations.append(conv)
         else:

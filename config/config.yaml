@@ -22,6 +22,10 @@ dataset:
     - "Kissadakron Duangparsart"
     - "Surachai Uthaisamairath"
     - "Support Team"
+  clean_attachments: true   # strip attachment metadata (URL/Type/Size)
+  clean_urls: true          # replace long URLs with [link]
+  dedupe_canned: true       # remove repeated canned closing messages
+  min_message_length: 3     # skip messages shorter than N chars
   system_prompt: |
     You are a helpful, polite customer support agent for a Thai company.
     Follow the company's support SOP. Ask for missing information before

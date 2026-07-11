@@ -35,6 +35,10 @@ def main() -> int:
     shuffle_seed = cfg.get("shuffle_seed", 42)
     system_prompt = cfg.get("system_prompt", "")
     agent_names = cfg.get("agent_names", [])
+    clean_attachments = cfg.get("clean_attachments", True)
+    clean_urls = cfg.get("clean_urls", True)
+    dedupe_canned = cfg.get("dedupe_canned", True)
+    min_msg_len = cfg.get("min_message_length", 3)
 
     print(f"Building dataset from {input_dir}...")
     result = generate_dataset(
@@ -44,6 +48,10 @@ def main() -> int:
         shuffle_seed=shuffle_seed,
         system_prompt=system_prompt.strip(),
         agent_names=agent_names,
+        clean_attachments=clean_attachments,
+        clean_urls=clean_urls,
+        dedupe_canned=dedupe_canned,
+        min_message_length=min_msg_len,
     )
 
     if "error" in result:
