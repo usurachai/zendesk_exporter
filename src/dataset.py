@@ -786,11 +786,32 @@ def _analyze_sentences(
 
 
 def _split_sentences(text: str) -> list[str]:
-    """Split text into sentences on period and newline boundaries."""
+    """Split text into sentences on period and newline boundaries.
+
+    Protects URLs from being split by replacing their dots with a
+    placeholder before splitting, then restoring them.
+    """
+    # Protect URLs: replace . in URLs with placeholder
+    url_pattern = re.compile(r'(https?://[^\s]+)')
+    placeholders: dict[str, str] = {}
+    counter = 0
+
+    def _protect(m: re.Match) -> str:
+        nonlocal counter
+        key = f'__URL_{counter}__'
+        counter += 1
+        placeholders[key] = m.group(0)
+        return key
+
+    text = url_pattern.sub(_protect, text)
+
     parts = []
     for chunk in text.replace("\n", ".").split("."):
         stripped = chunk.strip()
         if stripped:
+            # Restore protected URLs
+            for key, url in placeholders.items():
+                stripped = stripped.replace(key, url)
             parts.append(stripped)
     return parts
 
