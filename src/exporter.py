@@ -1,9 +1,12 @@
-"""Zendesk Incremental Export — exports Facebook Messenger tickets to raw JSON files.
+"""Zendesk Ticket Exporter — exports Facebook Messenger tickets with full conversations.
+
+Uses Zendesk Search API for fast date-range discovery (100 tickets/page) plus
+the Comments API per ticket to fetch full conversation history.
 
 Functional Requirements:
   FR-001: Export ticket metadata
-  FR-002: Export ticket comments
-  FR-003: Support Incremental Export API
+  FR-002: Export ticket comments (full conversation)
+  FR-003: Date-range export (Search API) + ongoing sync (Incremental API)
   FR-004: Retry when rate limited
   FR-005: Save one JSON file per ticket
   FR-006: Store all public comments
@@ -12,10 +15,10 @@ Functional Requirements:
 
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -50,10 +53,12 @@ def _api_url(cfg: dict[str, Any], path: str) -> str:
     """Build a fully-qualified Zendesk API URL."""
     subdomain = cfg["subdomain"]
     if not subdomain:
-        raise ValueError(
-            "ZENDESK_SUBDOMAIN is not set in .env or config."
-        )
+        raise ValueError("ZENDESK_SUBDOMAIN is not set in .env or config.")
     return f"https://{subdomain}.zendesk.com/api/v2{path}"
+
+
+def _auth(cfg: dict[str, Any]) -> tuple[str, str]:
+    return (f"{cfg['email']}/token", cfg["api_token"])
 
 
 def _parse_date(datestr: str | None) -> int | None:
@@ -67,61 +72,120 @@ def _parse_date(datestr: str | None) -> int | None:
 
 
 # ---------------------------------------------------------------
-# Checkpoint (resume) support  — FR-007
+# Checkpoint (resume) support — FR-007
 # ---------------------------------------------------------------
 
 
-def _load_cursor(checkpoint_path: Path) -> str | None:
-    """Read persisted next_page URL from checkpoint. Returns None if absent."""
+def _load_checkpoint(checkpoint_path: Path) -> dict[str, Any]:
+    """Read checkpoint dict. Returns empty dict if absent/corrupt."""
     if checkpoint_path.exists():
         try:
-            data = json.loads(checkpoint_path.read_text())
-            return data.get("next_page_url")
+            return json.loads(checkpoint_path.read_text())
         except (json.JSONDecodeError, KeyError):
-            logger.warning("Corrupt checkpoint file; starting fresh.")
-    return None
+            logger.warning("Corrupt checkpoint; starting fresh.")
+    return {}
 
 
-def _save_cursor(checkpoint_path: Path, next_page_url: str | None) -> None:
-    """Persist next_page URL for resume."""
+def _save_checkpoint(checkpoint_path: Path, data: dict[str, Any]) -> None:
+    """Persist checkpoint state."""
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-    checkpoint_path.write_text(json.dumps({"next_page_url": next_page_url}))
+    checkpoint_path.write_text(json.dumps(data))
 
 
 # ---------------------------------------------------------------
-# Incremental Export — FR-001, FR-002, FR-003
+# Search API — find tickets in date range
 # ---------------------------------------------------------------
 
 
-def _fetch_tickets_page(
+def _search_tickets(
     session: requests.Session,
     cfg: dict[str, Any],
-    start_time: int | None = None,
-    next_page_url: str | None = None,
-) -> dict[str, Any]:
-    """Fetch a page of tickets from the Zendesk Incremental Tickets API.
+    start_time: int,
+    end_time: int | None,
+    per_page: int = 100,
+) -> list[dict[str, Any]]:
+    """Use Zendesk Search API to find Facebook Messenger tickets in a date range.
 
-    On the first call, pass `start_time` (Unix timestamp). On subsequent
-    calls, pass `next_page_url` — we follow the server-provided URL directly
-    to preserve Zendesk's pagination cursor.
+    Much faster than Incremental API for date-range exports (100 tickets/page).
     """
-    auth = (f"{cfg['email']}/token", cfg["api_token"])
+    # Build search query: Facebook Messenger tickets in date range
+    query_parts = ["type:ticket", "channel:facebook_messenger"]
+    query_parts.append(f"created>={start_time}")
+    if end_time:
+        query_parts.append(f"created<={end_time}")
 
-    if next_page_url:
-        # Follow the exact next_page URL from Zendesk (preserves cursor state)
-        logger.debug("Following next_page URL")
-        resp = session.get(next_page_url, auth=auth, timeout=60)
-    else:
-        url = _api_url(cfg, "/incremental/tickets.json")
-        params: dict[str, Any] = {}
-        if start_time is not None:
-            params["start_time"] = start_time
+    query = " ".join(query_parts)
+    url = _api_url(cfg, "/search.json")
+    auth = _auth(cfg)
+    params: dict[str, Any] = {
+        "query": query,
+        "per_page": per_page,
+        "sort_by": "created_at",
+        "sort_order": "asc",
+    }
+
+    all_tickets: list[dict[str, Any]] = []
+    page = 0
+    next_url: str | None = url
+
+    while next_url:
+        page += 1
+        if page == 1:
+            resp = session.get(url, auth=auth, params=params, timeout=30)
         else:
-            params["start_time"] = int(time.time()) - 3600
-        resp = session.get(url, auth=auth, params=params, timeout=60)
+            resp = session.get(next_url, auth=auth, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
 
-    resp.raise_for_status()
-    return resp.json()
+        results = data.get("results", [])
+        all_tickets.extend(results)
+        logger.info(
+            "Search page %d: %d tickets found (total: %d)",
+            page, len(results), len(all_tickets),
+        )
+
+        next_url = data.get("next_page")
+
+    return all_tickets
+
+
+# ---------------------------------------------------------------
+# Comments API — fetch full conversation per ticket
+# ---------------------------------------------------------------
+
+
+def _fetch_comments(
+    session: requests.Session,
+    cfg: dict[str, Any],
+    ticket_id: int,
+) -> list[dict[str, Any]]:
+    """Fetch all comments for a single ticket — FR-002, FR-006."""
+    url = _api_url(cfg, f"/tickets/{ticket_id}/comments.json")
+    auth = _auth(cfg)
+    params: dict[str, Any] = {"per_page": 100}
+
+    all_comments: list[dict[str, Any]] = []
+    next_url: str | None = url
+
+    while next_url:
+        if next_url == url:
+            resp = session.get(url, auth=auth, params=params, timeout=30)
+        else:
+            resp = session.get(next_url, auth=auth, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+
+        comments = data.get("comments", [])
+        all_comments.extend(comments)
+
+        next_url = data.get("next_page")
+
+    return all_comments
+
+
+# ---------------------------------------------------------------
+# Formatting helpers
+# ---------------------------------------------------------------
 
 
 def _extract_fields(ticket: dict[str, Any]) -> dict[str, Any]:
@@ -137,12 +201,11 @@ def _extract_fields(ticket: dict[str, Any]) -> dict[str, Any]:
         "assignee_id": ticket.get("assignee_id"),
         "group_id": ticket.get("group_id"),
         "tags": ticket.get("tags", []),
-        "custom_fields": ticket.get("custom_fields", []),
     }
 
 
 def _format_comment(comment: dict[str, Any]) -> dict[str, Any]:
-    """Format a single comment — FR-002, FR-006 (public only)."""
+    """Format a single comment — FR-002, FR-006."""
     return {
         "id": comment.get("id"),
         "author_id": comment.get("author_id"),
@@ -159,41 +222,29 @@ def _format_comment(comment: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _ticket_to_json(ticket: dict[str, Any]) -> dict[str, Any]:
-    """Convert a raw Zendesk ticket to our structured JSON schema."""
+def _ticket_to_json(
+    ticket: dict[str, Any],
+    comments: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Convert a raw Zendesk ticket + comments to structured JSON."""
     return {
         "ticket_id": ticket.get("id"),
         "metadata": _extract_fields(ticket),
         "channel": "facebook_messenger",
         "comments": [
             _format_comment(c)
-            for c in sorted(
-                ticket.get("comments", []),
-                key=lambda c: c.get("created_at", ""),
-            )
+            for c in sorted(comments, key=lambda c: c.get("created_at", ""))
         ],
     }
-
-
-def _ticket_past_end(ticket: dict[str, Any], end_time: int | None) -> bool:
-    """Return True if the ticket's updated_at is past the end_time cutoff."""
-    if end_time is None:
-        return False
-    updated = ticket.get("updated_at", "")
-    if not updated:
-        return False
-    try:
-        dt = datetime.fromisoformat(updated.replace("Z", "+00:00"))
-        return int(dt.timestamp()) > end_time
-    except (ValueError, TypeError):
-        return False
 
 
 def _save_ticket(ticket_json: dict[str, Any], output_dir: Path) -> Path:
     """Persist one ticket as JSON — FR-005."""
     ticket_id = ticket_json["ticket_id"]
     output_path = output_dir / f"ticket_{ticket_id}.json"
-    output_path.write_text(json.dumps(ticket_json, ensure_ascii=False, indent=2))
+    output_path.write_text(
+        json.dumps(ticket_json, ensure_ascii=False, indent=2)
+    )
     return output_path
 
 
@@ -207,12 +258,16 @@ def run_export(
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> dict[str, Any]:
-    """Execute the Zendesk incremental export.
+    """Export Zendesk Facebook Messenger tickets with full conversations.
+
+    1. Search API: find all Facebook Messenger tickets in date range (fast, 100/page)
+    2. Comments API: fetch full conversation for each ticket (concurrent, 5 at a time)
+    3. Save each as ticket_{id}.json
 
     Args:
-        config_path: Optional override path to config YAML.
-        start_date: ISO date string (e.g., "2024-01-01") — overrides config.
-        end_date: ISO date string — stop exporting tickets past this date.
+        config_path: Optional override for config YAML.
+        start_date: ISO date string (e.g. "2024-01-01").
+        end_date: ISO date string.
 
     Returns:
         Summary dict with counts and status.
@@ -220,130 +275,158 @@ def run_export(
     cfg = get_export_config()
     if config_path:
         from src.common.config import load_config
-
-        full_cfg = load_config(config_path)
-        cfg = full_cfg.get("export", {})
+        cfg = load_config(config_path).get("export", {})
 
     # Validate credentials
     if not cfg.get("subdomain") or not cfg.get("email") or not cfg.get("api_token"):
         logger.error("Missing Zendesk credentials.")
         return {"error": "missing_credentials", "tickets_exported": 0}
 
+    # Resolve dates
+    if not start_date and cfg.get("start_time"):
+        start_date = cfg["start_time"]
+    if not end_date and cfg.get("end_time"):
+        end_date = cfg["end_time"]
+
+    if not start_date:
+        logger.error(
+            "start_date is required. Use --start-date or set export.start_time in config."
+        )
+        return {"error": "missing_start_date", "tickets_exported": 0}
+
+    start_time = _parse_date(start_date)
+    end_time = _parse_date(end_date)
+
     output_dir = Path(cfg.get("output_dir", "data/raw"))
     output_dir.mkdir(parents=True, exist_ok=True)
 
     checkpoint_path = Path(cfg.get("checkpoint_file", "data/export_cursor.json"))
+    concurrency = cfg.get("comment_concurrency", 5)
 
-    # Resolve start_time: CLI arg > config > checkpoint > default
-    start_time: int | None = None
-    if start_date:
-        start_time = _parse_date(start_date)
-        logger.info("Using CLI start_date: %s → %s", start_date, start_time)
-    elif cfg.get("start_time"):
-        start_time = _parse_date(cfg["start_time"])
-        logger.info("Using config start_time: %s", start_time)
+    logger.info("Export: %s → %s", start_date, end_date or "now")
 
-    end_time: int | None = None
-    if end_date:
-        end_time = _parse_date(end_date)
-        logger.info("End date cutoff: %s → %s", end_date, end_time)
-    elif cfg.get("end_time"):
-        end_time = _parse_date(cfg["end_time"])
-
-    # FR-007: Resume from checkpoint (next_page URL)
-    next_page_url = _load_cursor(checkpoint_path)
-    if next_page_url:
-        logger.info("Resuming from checkpoint (next_page URL)")
-    elif start_time is None:
-        start_time = int(time.time()) - 3600
-        logger.info("No start date given, defaulting to last hour")
-
+    # ----- Phase 1: Search for tickets -----
     session = _build_session(
         max_retries=cfg.get("max_retries", 5),
         backoff_base=cfg.get("retry_backoff_base", 2),
     )
 
-    tickets_exported = 0
-    tickets_skipped = 0
-    pages = 0
-    max_pages = cfg.get("max_pages", 5000)
+    logger.info("Phase 1: Searching for Facebook Messenger tickets...")
+    t0 = time.time()
 
-    # Progress tracking
-    progress_interval = max(1, cfg.get("progress_interval", 50))
-    start_wall = time.time()
-    last_progress = start_wall
+    try:
+        tickets = _search_tickets(session, cfg, start_time, end_time)
+    except requests.HTTPError as exc:
+        logger.error("Search API error: %s", exc)
+        return {"error": "search_api_error", "tickets_exported": 0}
 
-    while pages < max_pages:
-        pages += 1
-        try:
-            data = _fetch_tickets_page(
-                session, cfg,
-                start_time=start_time,
-                next_page_url=next_page_url if pages > 1 else None,
-            )
-        except requests.HTTPError as exc:
-            logger.error("HTTP error on page %d: %s", pages, exc)
-            return {
-                "error": f"http_error_page_{pages}",
-                "tickets_exported": tickets_exported,
-                "tickets_skipped": tickets_skipped,
-            }
+    if not tickets:
+        logger.info("No Facebook Messenger tickets found in date range.")
+        return {
+            "tickets_exported": 0,
+            "tickets_found": 0,
+            "elapsed_seconds": round(time.time() - t0, 1),
+            "output_dir": str(output_dir),
+        }
 
-        tickets = data.get("tickets", [])
-        page_count = len(tickets)
-
-        for raw_ticket in tickets:
-            # Client-side end_date filtering
-            if _ticket_past_end(raw_ticket, end_time):
-                tickets_skipped += 1
-                continue
-
-            ticket_json = _ticket_to_json(raw_ticket)
-            _save_ticket(ticket_json, output_dir)
-            tickets_exported += 1
-
-        # Progress reporting
-        now = time.time()
-        if pages % progress_interval == 0 or (now - last_progress) > 30:
-            elapsed = now - start_wall
-            rate = tickets_exported / elapsed if elapsed > 0 else 0
-            logger.info(
-                "Page %d | %d exported (+%d this page) | %.1f tickets/sec | %.0fs elapsed",
-                pages, tickets_exported, page_count, rate, elapsed,
-            )
-            last_progress = now
-
-        # Check for next page
-        next_page_url = data.get("next_page")
-        if not next_page_url:
-            logger.info("No more pages. Export complete.")
-            break
-
-        # FR-007: Persist checkpoint after each page
-        _save_cursor(checkpoint_path, next_page_url)
-
-        # Safety: if end_time is set and ALL tickets on this page were past
-        # end, we're done (incremental API returns in chronological order)
-        if end_time and page_count > 0 and tickets_skipped > 0 and tickets_exported == 0:
-            # Check if even the first ticket is past end
-            if _ticket_past_end(tickets[0], end_time):
-                logger.info("All tickets past end_date cutoff. Stopping.")
-                break
-
-    # Clear checkpoint on successful completion
-    _save_cursor(checkpoint_path, None)
-
-    elapsed = time.time() - start_wall
     logger.info(
-        "Export finished: %d tickets across %d pages in %.0fs (%.1f/sec)",
-        tickets_exported, pages, elapsed,
+        "Found %d tickets in %.1fs. Phase 2: fetching comments...",
+        len(tickets), time.time() - t0,
+    )
+
+    # ----- Phase 2: Fetch comments concurrently -----
+    t1 = time.time()
+    tickets_exported = 0
+    tickets_failed = 0
+
+    # FR-007: Resume — load already-exported ticket IDs
+    checkpoint = _load_checkpoint(checkpoint_path)
+    done_ids: set[int] = set(checkpoint.get("done_ticket_ids", []))
+
+    # Sort tickets chronologically
+    tickets.sort(key=lambda t: t.get("created_at", ""))
+
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        # Submit all comment fetch jobs
+        futures: dict[Any, dict[str, Any]] = {}
+        for ticket in tickets:
+            tid = ticket["id"]
+            if tid in done_ids:
+                logger.debug("Skipping ticket %d (already exported)", tid)
+                continue
+            future = executor.submit(
+                _fetch_and_save,
+                session, cfg, ticket, output_dir, checkpoint_path, done_ids,
+            )
+            futures[future] = ticket
+
+        # Collect results
+        for future in as_completed(futures):
+            ticket = futures[future]
+            tid = ticket["id"]
+            try:
+                success = future.result()
+                if success:
+                    tickets_exported += 1
+                    done_ids.add(tid)
+                else:
+                    tickets_failed += 1
+            except Exception as exc:
+                logger.error("Ticket %d failed: %s", tid, exc)
+                tickets_failed += 1
+
+            # Progress every 10 tickets
+            total_done = tickets_exported + tickets_failed + len(done_ids)
+            if total_done % 10 == 0:
+                elapsed = time.time() - t1
+                rate = tickets_exported / elapsed if elapsed > 0 else 0
+                remaining = len(tickets) - tickets_exported - tickets_failed - len(done_ids)
+                logger.info(
+                    "Comments: %d/%d exported | %.1f/sec | %d remaining",
+                    tickets_exported, len(tickets), rate, max(0, remaining),
+                )
+
+        # Final checkpoint save
+        _save_checkpoint(checkpoint_path, {"done_ticket_ids": list(done_ids)})
+
+    elapsed = time.time() - t0
+    logger.info(
+        "Export done: %d tickets exported, %d failed in %.0fs (%.1f/sec)",
+        tickets_exported, tickets_failed, elapsed,
         tickets_exported / elapsed if elapsed > 0 else 0,
     )
 
+    # Clear checkpoint on full success
+    if tickets_failed == 0:
+        _save_checkpoint(checkpoint_path, {})
+
     return {
         "tickets_exported": tickets_exported,
-        "tickets_skipped": tickets_skipped,
-        "pages": pages,
+        "tickets_failed": tickets_failed,
+        "tickets_found": len(tickets),
         "elapsed_seconds": round(elapsed, 1),
         "output_dir": str(output_dir),
     }
+
+
+def _fetch_and_save(
+    session: requests.Session,
+    cfg: dict[str, Any],
+    ticket: dict[str, Any],
+    output_dir: Path,
+    checkpoint_path: Path,
+    done_ids: set[int],
+) -> bool:
+    """Fetch comments for a single ticket and save the result. Returns True on success."""
+    tid = ticket["id"]
+    try:
+        comments = _fetch_comments(session, cfg, tid)
+        ticket_json = _ticket_to_json(ticket, comments)
+        _save_ticket(ticket_json, output_dir)
+        return True
+    except requests.HTTPError as exc:
+        if exc.response is not None and exc.response.status_code == 404:
+            logger.warning("Ticket %d: 404 (may be deleted), skipping", tid)
+        else:
+            logger.error("Ticket %d: HTTP %s", tid, exc)
+        return False
