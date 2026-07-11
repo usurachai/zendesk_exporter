@@ -25,6 +25,8 @@ dataset:
   clean_attachments: true   # strip attachment metadata (URL/Type/Size)
   clean_urls: true          # replace long URLs with [link]
   dedupe_canned: true       # remove repeated canned closing messages
+  dedupe_exact: true        # cross-conversation exact duplicate removal
+  max_duplicate_count: 3    # keep max N copies of identical messages
   min_message_length: 3     # skip messages shorter than N chars
   redact_pii: true          # redact phone numbers and emails
   pii_safe_patterns:        # patterns to keep (not redacted)

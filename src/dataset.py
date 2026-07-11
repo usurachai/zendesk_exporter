@@ -402,6 +402,8 @@ def generate_dataset(
     dedupe_canned: bool = True,
     redact_pii: bool = True,
     pii_safe_patterns: list[str] | None = None,
+    dedupe_exact: bool = True,
+    max_duplicate_count: int = 3,
     min_message_length: int = 3,
 ) -> dict[str, Any]:
     """Build conversations from raw tickets and generate train/valid JSONL files.
@@ -465,6 +467,10 @@ def generate_dataset(
     train_convs = conversations[:split_idx]
     valid_convs = conversations[split_idx:]
 
+    # Cross-conversation exact dedup on training set only
+    if dedupe_exact:
+        train_convs = _dedupe_exact(train_convs, max_copies=max_duplicate_count)
+
     # FR-203: Generate JSONL
     train_path = output_path / "train.jsonl"
     valid_path = output_path / "valid.jsonl"
@@ -500,3 +506,51 @@ def _write_jsonl(
             formatted = _to_unsloth_format(conv, system_prompt)
             fh.write(json.dumps(formatted, ensure_ascii=False) + "\n")
     logger.info("Wrote %d records to %s", len(conversations), output_path)
+
+
+def _dedupe_exact(
+    conversations: list[dict[str, Any]],
+    max_copies: int = 3,
+) -> list[dict[str, Any]]:
+    """Remove excessive duplicate messages across conversations.
+
+    For each unique message (normalized), keep at most max_copies
+    occurrences. Drops the message entirely from conversations where
+    it appears past the limit, removing the turn.
+
+    This prevents model bias from canned/template responses.
+    """
+    from collections import Counter
+
+    # Count normalized message occurrences
+    msg_counts: Counter = Counter()
+    for conv in conversations:
+        seen_in_conv: set[str] = set()
+        for turn in conv["conversation"]:
+            norm = " ".join(turn["content"].lower().split())
+            if norm not in seen_in_conv:
+                msg_counts[norm] += 1
+                seen_in_conv.add(norm)
+
+    # Track how many times we've kept each message
+    kept: Counter = Counter()
+    dropped = 0
+
+    for conv in conversations:
+        filtered_turns = []
+        for turn in conv["conversation"]:
+            norm = " ".join(turn["content"].lower().split())
+            if kept[norm] < max_copies:
+                kept[norm] += 1
+                filtered_turns.append(turn)
+            else:
+                dropped += 1
+        conv["conversation"] = filtered_turns
+
+    if dropped:
+        logger.info("Dedupe: dropped %d duplicate message occurrences (keep <=%d)", dropped, max_copies)
+
+    # Remove conversations that became empty after dedup
+    conversations = [c for c in conversations if len(c["conversation"]) > 0]
+
+    return conversations

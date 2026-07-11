@@ -41,6 +41,8 @@ def main() -> int:
     min_msg_len = cfg.get("min_message_length", 3)
     redact_pii = cfg.get("redact_pii", True)
     pii_safe = cfg.get("pii_safe_patterns", [])
+    dedupe_exact = cfg.get("dedupe_exact", True)
+    max_dup = cfg.get("max_duplicate_count", 3)
 
     print(f"Building dataset from {input_dir}...")
     result = generate_dataset(
@@ -55,6 +57,8 @@ def main() -> int:
         dedupe_canned=dedupe_canned,
         redact_pii=redact_pii,
         pii_safe_patterns=pii_safe,
+        dedupe_exact=dedupe_exact,
+        max_duplicate_count=max_dup,
         min_message_length=min_msg_len,
     )
 
