@@ -138,8 +138,11 @@ _ATTACHMENT_META_RE = re.compile(
 _URL_RE = re.compile(r"https?://\S+")
 
 # Canned message detection — dynamic via frequency analysis (no hardcoded patterns)
-_CANNED_MIN_LEN = 40   # minimum substring length to consider
-_CANNED_MIN_FREQ = 5   # minimum occurrences to flag as canned
+_CANNED_MIN_LEN = 25   # minimum substring length for primary detection
+_CANNED_MIN_FREQ = 5   # minimum occurrences for primary detection
+# Second-pass: short phrases that appear extremely often (>50x) are likely templates
+_SHORT_CANNED_MIN_LEN = 15
+_SHORT_CANNED_MIN_FREQ = 30
 
 # Thai filler/particle words
 _TRAILING_FILLERS = [
@@ -219,6 +222,27 @@ def _discover_canned_signatures(
                 sub_freq[sub] += 1
 
     signatures = {s for s, c in sub_freq.items() if c >= min_freq}
+
+    # Second pass: detect short but extremely frequent phrases
+    # (e.g., "(ยกเว้นวันหยุด)" at 14 chars appearing 300+ times)
+    if min_len > _SHORT_CANNED_MIN_LEN:
+        short_freq: Counter = Counter()
+        for body in messages:
+            if len(body) < _SHORT_CANNED_MIN_LEN:
+                continue
+            step = max(1, len(body) // 30)
+            for i in range(0, max(1, len(body) - _SHORT_CANNED_MIN_LEN), step):
+                sub = body[i:i + _SHORT_CANNED_MIN_LEN]
+                if len(sub) >= _SHORT_CANNED_MIN_LEN:
+                    short_freq[sub] += 1
+
+        short_sigs = {s for s, c in short_freq.items() if c >= _SHORT_CANNED_MIN_FREQ}
+        if short_sigs:
+            logger.info(
+                "Short-phrase detection: %d signatures (min_len=%d, min_freq=%d)",
+                len(short_sigs), _SHORT_CANNED_MIN_LEN, _SHORT_CANNED_MIN_FREQ,
+            )
+        signatures |= short_sigs
 
     if signatures:
         logger.info(
@@ -489,7 +513,7 @@ def generate_dataset(
     dedupe_exact: bool = True,
     max_duplicate_count: int = 3,
     dedupe_sentences: bool = True,
-    max_sentence_count: int = 5,
+    filter_sentences: list[str] | None = None,
     min_message_length: int = 3,
 ) -> dict[str, Any]:
     """Build conversations from raw tickets and generate train/valid JSONL files.
@@ -559,8 +583,8 @@ def generate_dataset(
         train_convs = _dedupe_exact(train_convs, max_copies=max_duplicate_count)
 
     # Sentence-level dedup on training set
-    if dedupe_sentences:
-        train_convs = _dedupe_sentences(train_convs, max_copies=max_sentence_count)
+    if dedupe_sentences and filter_sentences:
+        train_convs = _dedupe_sentences(train_convs, filter_list=set(filter_sentences))
 
     # Cross-conversation canned message dedup
     if dedupe_canned:
@@ -645,6 +669,19 @@ def _dedupe_exact(
     if dropped:
         logger.info("Dedupe: dropped %d duplicate message occurrences (keep <=%d)", dropped, max_copies)
 
+    # Drop conversations that became single-turn (system + one user = no agent reply)
+    # These are useless for training after their agent responses were deduplicated.
+    before_drop = len(conversations)
+    conversations = [
+        c for c in conversations
+        if sum(1 for t in c["conversation"] if t["role"] != "system") >= 2
+    ]
+    if before_drop > len(conversations):
+        logger.info(
+            "Dedupe: dropped %d broken conversations (no agent reply after dedup)",
+            before_drop - len(conversations),
+        )
+
     # Remove conversations that became empty after dedup
     conversations = [c for c in conversations if len(c["conversation"]) > 0]
 
@@ -653,18 +690,58 @@ def _dedupe_exact(
 
 def _dedupe_sentences(
     conversations: list[dict[str, Any]],
-    max_copies: int = 5,
+    filter_list: set[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Remove over-represented sentences across conversations.
+    """Remove over-represented sentences from conversations.
 
-    Handles the case where the same sentence appears as part of many
-    different messages (e.g., a shared apology prefix). Sentences
-    appearing more than max_copies times are dropped from all but
-    the first max_copies occurrences.
+    Uses an explicit filter list (set in config.yaml after analysis).
+    Only strips sentences from multi-sentence messages; single-sentence
+    messages are left intact to preserve conversation flow.
+
+    Args:
+        conversations: List of conversation dicts.
+        filter_list: Set of exact sentence strings to remove.
+                     If None or empty, returns conversations unchanged.
+    """
+    if not filter_list:
+        return conversations
+
+    dropped = 0
+
+    for conv in conversations:
+        filtered_turns = []
+        for turn in conv["conversation"]:
+            sentences = _split_sentences(turn["content"])
+            if len(sentences) <= 1:
+                # Single sentence: never strip (preserves conversation flow)
+                filtered_turns.append(turn)
+                continue
+
+            kept_sentences = [s for s in sentences if s not in filter_list]
+            if kept_sentences:
+                dropped += len(sentences) - len(kept_sentences)
+                turn["content"] = ". ".join(kept_sentences)
+                filtered_turns.append(turn)
+            else:
+                dropped += len(sentences)
+        conv["conversation"] = filtered_turns
+
+    logger.info("Sentence dedup: dropped %d sentence occurrences", dropped)
+    conversations = [c for c in conversations if len(c["conversation"]) > 0]
+    return conversations
+
+
+def _analyze_sentences(
+    conversations: list[dict[str, Any]],
+    top_n: int = 50,
+) -> list[tuple[str, int]]:
+    """Analyze sentence frequencies and return candidates for filtering.
+
+    Returns the top-N most frequent sentences (min 15 chars) sorted by
+    frequency, for user review and manual inclusion in filter_sentences.
     """
     from collections import Counter
 
-    # First pass: count sentence frequencies
     sent_freq: Counter = Counter()
     for conv in conversations:
         for turn in conv["conversation"]:
@@ -672,41 +749,10 @@ def _dedupe_sentences(
                 if len(sent) > 15:
                     sent_freq[sent] += 1
 
-    # Identify over-represented sentences
-    over_limit = {s for s, c in sent_freq.items() if c > max_copies}
-    if not over_limit:
-        return conversations
-
-    logger.info("Sentence dedup: %d over-represented sentence types found", len(over_limit))
-
-    # Second pass: keep first max_copies, drop rest
-    kept: Counter = Counter()
-    dropped = 0
-
-    for conv in conversations:
-        filtered_turns = []
-        for turn in conv["conversation"]:
-            sentences = _split_sentences(turn["content"])
-            kept_sentences = []
-            for sent in sentences:
-                if sent not in over_limit:
-                    kept_sentences.append(sent)
-                elif kept[sent] < max_copies:
-                    kept[sent] += 1
-                    kept_sentences.append(sent)
-                else:
-                    dropped += 1
-            if kept_sentences:
-                turn["content"] = ". ".join(kept_sentences)
-                filtered_turns.append(turn)
-        conv["conversation"] = filtered_turns
-
-    logger.info("Sentence dedup: dropped %d sentence occurrences", dropped)
-
-    # Remove empty conversations
-    conversations = [c for c in conversations if len(c["conversation"]) > 0]
-
-    return conversations
+    # Return sentences appearing >1 time, sorted by frequency
+    candidates = [(s, c) for s, c in sent_freq.items() if c > 1]
+    candidates.sort(key=lambda x: -x[1])
+    return candidates[:top_n]
 
 
 def _split_sentences(text: str) -> list[str]:
@@ -744,7 +790,8 @@ def _dedupe_canned(
 
     # Phase 2: keep at most max_copies per signature.
     # Messages with canned suffix (<60% coverage) get the suffix stripped
-    # instead of being dropped.
+    # instead of being dropped. Messages with canned phrases mid-text get
+    # just the phrase stripped.
     kept_per_sig: Counter = Counter()
     dropped = 0
     kept = 0
@@ -771,8 +818,8 @@ def _dedupe_canned(
                 else:
                     dropped += 1
             else:
-                # Canned phrase is a suffix: strip it, keep the unique prefix
-                new_body = _strip_canned_suffix(body, sig)
+                # Strip the canned phrase from the message
+                new_body = _remove_canned_phrase(body, sig)
                 if new_body and len(new_body) >= 3:
                     turn["content"] = new_body
                     stripped += 1
@@ -782,31 +829,20 @@ def _dedupe_canned(
         conv["conversation"] = filtered_turns
 
     logger.info(
-        "Canned dedup: kept %d, dropped %d, stripped suffix from %d messages",
+        "Canned dedup: kept %d, dropped %d, stripped %d messages",
         kept, dropped, stripped,
     )
     conversations = [c for c in conversations if len(c["conversation"]) > 0]
     return conversations
 
 
-def _strip_canned_suffix(body: str, sig: str) -> str | None:
-    """Remove a canned signature from the end of a message.
-
-    Only strips if the signature appears at the end (within 20 chars
-    of the end). Returns None if nothing meaningful remains.
-    """
+def _remove_canned_phrase(body: str, sig: str) -> str | None:
+    """Remove a canned signature phrase from a message."""
     normalized = " ".join(body.split())
-    idx = normalized.rfind(sig)
-    if idx == -1:
-        return body  # signature not found, shouldn't happen
-
-    # Only strip if near the end
-    remaining_after = len(normalized) - (idx + len(sig))
-    if remaining_after > 20:
-        return body  # not at the end, keep whole message
-
-    prefix = normalized[:idx].strip().rstrip(",;:!?。，；：！？")
-    return prefix if prefix else None
+    result = normalized.replace(sig, " ")
+    result = " ".join(result.split())
+    result = result.strip().rstrip(",;:!?。，；：！？")
+    return result if result else None
 
 
 def _longest_matching_sig(body: str, sorted_sigs: list[str]) -> str | None:

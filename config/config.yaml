@@ -28,7 +28,8 @@ dataset:
   dedupe_exact: true        # cross-conversation exact duplicate removal
   max_duplicate_count: 3    # keep max N copies of identical messages
   dedupe_sentences: true    # sentence-level dedup across conversations
-  max_sentence_count: 5     # drop sentences appearing more than N times
+  filter_sentences: []       # exact sentences to filter (populate after analysis)
+  # Run `uv run python run_prepare.py --analyze` to discover candidates
   clean_fillers: true       # strip trailing filler particles (ครับ/ค่ะ/ฮะ/etc)
   drop_filler_only: true    # drop messages that are nothing but filler words
   min_message_length: 3     # skip messages shorter than N chars
