@@ -39,8 +39,11 @@ logger = get_logger(__name__)
 
 # Matches "(HH:MM:SS) Name: " or "(HH:MM:SS) Name uploaded: " at start of body
 _SUNSHINE_AUTHOR_RE = re.compile(
-    r"^\(\d{2}:\d{2}:\d{2}\)\s+(.+?)(?:\suploaded)?:\s+"
+    r"^\((\d{2}:\d{2}:\d{2})\)\s+(.+?)(?:\suploaded)?:\s+"
 )
+
+# Splits on "(HH:MM:SS) " boundaries — each segment is one person's message(s)
+_SUNSHINE_SPLIT_RE = re.compile(r"(?=\(\d{2}:\d{2}:\d{2}\)\s+)")
 
 # Matches private comment "Conversation with <Name>"
 _CONVERSATION_WITH_RE = re.compile(r"^Conversation\s+with\s+(.+)", re.IGNORECASE)
@@ -59,23 +62,39 @@ def _extract_customer_name(comments: list[dict[str, Any]]) -> str | None:
     return None
 
 
-def _parse_sunshine_author(body: str) -> str | None:
-    """Extract speaker name from Sunshine Conversations body prefix.
+def _split_sunshine_messages(
+    body: str,
+    customer_name: str,
+) -> list[tuple[str, str]]:
+    """Split a Sunshine Conversations comment body into individual messages.
 
-    Returns the name (e.g. "Nattaya Suwannaroj") or None if unparseable.
+    A single Zendesk comment can contain multiple messages from different
+    speakers. This splits at each "(HH:MM:SS) Name:" boundary and classifies
+    each sub-message as customer or agent.
+
+    Returns list of (role, cleaned_body) tuples.
     """
-    m = _SUNSHINE_AUTHOR_RE.match(body.strip())
-    if m:
-        return m.group(1).strip()
-    return None
+    # Split on timestamp boundaries, discard leading empty string
+    segments = [s.strip() for s in _SUNSHINE_SPLIT_RE.split(body.strip()) if s.strip()]
 
+    results: list[tuple[str, str]] = []
+    for seg in segments:
+        m = _SUNSHINE_AUTHOR_RE.match(seg)
+        if not m:
+            # Unparseable segment — skip or treat as continuation
+            continue
 
-def _strip_sunshine_prefix(body: str) -> str:
-    """Remove the first Sunshine Conversations timestamp+name prefix.
+        author = m.group(2).strip()
+        # Remove the "(HH:MM:SS) Name: " prefix
+        cleaned = _SUNSHINE_AUTHOR_RE.sub("", seg, count=1).strip()
 
-    Keeps subsequent timestamps intact (same-speaker rapid-fire messages).
-    """
-    return _SUNSHINE_AUTHOR_RE.sub("", body.strip(), count=1).strip()
+        if not cleaned:
+            continue  # skip attachment-only segments with no text
+
+        role = "customer" if author.lower() == customer_name.lower() else "agent"
+        results.append((role, cleaned))
+
+    return results
 
 
 def _is_sunshine_format(comments: list[dict[str, Any]]) -> bool:
@@ -165,23 +184,26 @@ def build_conversation(ticket: dict[str, Any]) -> dict[str, Any] | None:
         author_id = comment.get("author_id")
 
         if sunshine and customer_name:
-            role, body = _classify_sunshine(body, customer_name)
+            # Split multi-message Sunshine comment into individual messages
+            sub_messages = _split_sunshine_messages(body, customer_name)
         else:
             # Native format: FR-101, FR-102
             role = "customer" if author_id == requester_id else "agent"
+            sub_messages = [(role, body)]
 
-        if not body:
-            continue  # FR-105: skip after strip
+        for role, clean_body in sub_messages:
+            if not clean_body:
+                continue  # FR-105: skip after strip
 
-        if merged and merged[-1]["role"] == role:
-            merged[-1]["content"] += "\n" + body
-            merged[-1]["comment_ids"].append(comment["id"])
-        else:
-            merged.append({
-                "role": role,
-                "content": body,
-                "comment_ids": [comment["id"]],
-            })
+            if merged and merged[-1]["role"] == role:
+                merged[-1]["content"] += "\n" + clean_body
+                merged[-1]["comment_ids"].append(comment["id"])
+            else:
+                merged.append({
+                    "role": role,
+                    "content": clean_body,
+                    "comment_ids": [comment["id"]],
+                })
 
     if not merged:
         return None
