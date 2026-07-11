@@ -710,10 +710,13 @@ def _dedupe_sentences(
 
 
 def _split_sentences(text: str) -> list[str]:
-    """Split text into sentences on period boundaries, preserving content."""
-    # Split on '.' followed by space or end, keep the split points clean
-    parts = text.replace("\n", " ").split(".")
-    return [p.strip() for p in parts if p.strip()]
+    """Split text into sentences on period and newline boundaries."""
+    parts = []
+    for chunk in text.replace("\n", ".").split("."):
+        stripped = chunk.strip()
+        if stripped:
+            parts.append(stripped)
+    return parts
 
 
 def _dedupe_canned(
@@ -739,49 +742,71 @@ def _dedupe_canned(
     # Sort signatures by length (longest first) for best match
     sorted_sigs = sorted(signatures, key=len, reverse=True)
 
-    def _canned_fraction(body: str) -> float:
-        """What fraction of the message does the best canned signature cover?"""
-        normalized = " ".join(body.split())
-        body_len = len(normalized)
-        if body_len < 40:
-            return 0.0
-        best = 0.0
-        for sig in sorted_sigs:
-            if sig in normalized:
-                fraction = len(sig) / body_len
-                if fraction > best:
-                    best = fraction
-                if best >= 1.0:
-                    break
-        return best
-
-    # Phase 2: keep at most max_copies per signature
+    # Phase 2: keep at most max_copies per signature.
+    # Messages with canned suffix (<60% coverage) get the suffix stripped
+    # instead of being dropped.
     kept_per_sig: Counter = Counter()
     dropped = 0
     kept = 0
+    stripped = 0
 
     for conv in conversations:
         filtered_turns = []
         for turn in conv["conversation"]:
             body = turn["content"]
-            fraction = _canned_fraction(body)
+            sig = _longest_matching_sig(body, sorted_sigs)
 
-            # Only treat as canned if the signature covers >=60% of the message
+            if sig is None:
+                filtered_turns.append(turn)
+                continue
+
+            fraction = len(sig) / max(len(" ".join(body.split())), 1)
+
             if fraction >= 0.6:
-                matching_sig = _longest_matching_sig(body, sorted_sigs)
-                if matching_sig and kept_per_sig[matching_sig] < max_copies:
-                    kept_per_sig[matching_sig] += 1
+                # Template dominates: keep max_copies, drop rest
+                if kept_per_sig[sig] < max_copies:
+                    kept_per_sig[sig] += 1
                     kept += 1
                     filtered_turns.append(turn)
                 else:
                     dropped += 1
             else:
-                filtered_turns.append(turn)
+                # Canned phrase is a suffix: strip it, keep the unique prefix
+                new_body = _strip_canned_suffix(body, sig)
+                if new_body and len(new_body) >= 3:
+                    turn["content"] = new_body
+                    stripped += 1
+                    filtered_turns.append(turn)
+                else:
+                    dropped += 1
         conv["conversation"] = filtered_turns
 
-    logger.info("Canned dedup: kept %d, dropped %d canned messages", kept, dropped)
+    logger.info(
+        "Canned dedup: kept %d, dropped %d, stripped suffix from %d messages",
+        kept, dropped, stripped,
+    )
     conversations = [c for c in conversations if len(c["conversation"]) > 0]
     return conversations
+
+
+def _strip_canned_suffix(body: str, sig: str) -> str | None:
+    """Remove a canned signature from the end of a message.
+
+    Only strips if the signature appears at the end (within 20 chars
+    of the end). Returns None if nothing meaningful remains.
+    """
+    normalized = " ".join(body.split())
+    idx = normalized.rfind(sig)
+    if idx == -1:
+        return body  # signature not found, shouldn't happen
+
+    # Only strip if near the end
+    remaining_after = len(normalized) - (idx + len(sig))
+    if remaining_after > 20:
+        return body  # not at the end, keep whole message
+
+    prefix = normalized[:idx].strip().rstrip(",;:!?。，；：！？")
+    return prefix if prefix else None
 
 
 def _longest_matching_sig(body: str, sorted_sigs: list[str]) -> str | None:
