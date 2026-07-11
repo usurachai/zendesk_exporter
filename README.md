@@ -9,7 +9,7 @@ Fine-tune Qwen2.5-1.5B-Instruct on historical Zendesk Facebook Messenger convers
 ## Architecture
 
 ```
-Zendesk Incremental Export API
+Zendesk Search API + Comments API
         │
         ▼
    run_export.py      →  data/raw/ticket_*.json
@@ -68,13 +68,13 @@ ZENDESK_EMAIL=agent@yourcompany.com
 ZENDESK_API_TOKEN=your_api_token
 ```
 
-Override defaults in `config/config.yaml` as needed (ratios, model name, LoRA params).
+Override defaults in `config/config.yaml` as needed (date ranges, channel ID, agent names, cleanup toggles, LoRA params).
 
 ### 3. Run the pipeline
 
 ```bash
-# Step 1 — Export tickets
-uv run python run_export.py
+# Step 1 — Export tickets (requires --start-date)
+uv run python run_export.py --start-date 2026-06-01 --end-date 2026-06-30
 
 # Step 2 — Build dataset
 uv run python run_prepare.py
@@ -92,7 +92,7 @@ Or activate the venv and run directly:
 source .venv/bin/activate   # Linux/macOS
 .venv\Scripts\activate      # Windows
 
-python run_export.py
+python run_export.py --start-date 2026-06-01 --end-date 2026-06-30
 python run_prepare.py
 python run_train.py
 python run_test.py
@@ -114,8 +114,8 @@ zendesk_exporter/
 │   ├── common/
 │   │   ├── config.py        # YAML + .env loader
 │   │   └── logger.py        # Structured logging
-│   ├── exporter.py          # Zendesk incremental export
-│   ├── dataset.py           # Conversation builder + JSONL generator
+│   ├── exporter.py          # Zendesk Search API + Comments API export
+│   ├── dataset.py           # Conversation builder + JSONL generator + cleanup
 │   ├── trainer.py           # Unsloth LoRA fine-tuning
 │   └── tester.py            # Interactive CLI inference
 ├── run_export.py            # Entry point: export
@@ -123,7 +123,8 @@ zendesk_exporter/
 ├── run_train.py             # Entry point: train
 ├── run_test.py              # Entry point: test
 ├── .env.example             # Required secrets template
-├── requirements.txt
+├── requirements.txt         # Core deps (export + dataset)
+├── requirements-train.txt   # Optional ML deps (training + inference)
 └── spec.md                  # Full functional specification
 ```
 
@@ -133,18 +134,32 @@ zendesk_exporter/
 
 ### 1. Exporter (`run_export.py`)
 
-Exports Facebook Messenger tickets from Zendesk via the Incremental Export API.
+Exports Facebook Messenger (Sunshine Conversations) tickets with full conversation history.
 
+- **Phase 1 — Search API**: finds tickets by channel (`via:sunshine_conversations_facebook_messenger`) and date range, 100 tickets/page
+- **Phase 2 — Comments API**: fetches full conversation for each ticket concurrently (5 workers, configurable)
+- `--start-date` / `--end-date` CLI args for date-range exports (ISO format: `YYYY-MM-DD`)
+- Resumes from interruption via checkpoint of completed ticket IDs
+- Rate-limit retry with exponential backoff
 - Saves one JSON file per ticket to `data/raw/`
-- Handles rate limiting (exponential backoff, configurable retries)
-- Resumes from interruption via checkpoint cursor
-- Stores all public comments with metadata
 
 ### 2. Dataset Builder (`run_prepare.py`)
 
-Converts raw tickets into Unsloth-format conversation data.
+Converts raw tickets into Unsloth-format conversation data with quality cleanup.
 
-- Identifies customer vs agent by `requester_id`
+**Sunshine Conversations support** — handles the `author_id=-1` format where speaker names are embedded in message bodies as `(HH:MM:SS) Name: message`:
+- Extracts customer name from private `"Conversation with <Name>"` comment
+- Parses speaker from each message timestamp prefix
+- Classifies using configurable agent name whitelist (`dataset.agent_names`)
+- Splits multi-message Zendesk comments into individual turns
+
+**Quality cleanup** (all configurable toggles):
+- Strips attachment metadata (`.jpeg\nURL:...\nType:...\nSize:...` → `[image]`)
+- Replaces raw URLs with `[link]` placeholder
+- Deduplicates canned closing messages within conversations
+- Drops messages shorter than `min_message_length` (default: 3 chars)
+
+**Standard pipeline:**
 - Merges consecutive same-role messages
 - Removes private notes and empty messages
 - Splits into train/valid with configurable ratio and shuffle seed
@@ -171,30 +186,69 @@ Interactive CLI to test the fine-tuned model.
 
 ## Configuration Reference
 
-All tunable parameters in `config/config.yaml`:
+All tunable parameters in `config/config.yaml`. Secrets go in `.env` (never committed).
 
-| Section | Key | Default | Description |
-|---------|-----|---------|-------------|
-| `export` | `incremental` | `true` | Use Zendesk incremental API |
-| `export` | `max_retries` | `5` | Rate-limit retry count |
-| `export` | `retry_backoff_base` | `2` | Exponential backoff seconds |
-| `dataset` | `train_ratio` | `0.9` | Train/valid split proportion |
-| `dataset` | `shuffle_seed` | `42` | Reproducible shuffle |
-| `dataset` | `system_prompt` | *(Thai support agent)* | Injected into every sample |
-| `training` | `base_model` | `unsloth/Qwen2.5-1.5B-Instruct` | HuggingFace model ID |
-| `training` | `lora_r` | `16` | LoRA rank |
-| `training` | `num_epochs` | `3` | Training epochs |
-| `training` | `learning_rate` | `2.0e-4` | Learning rate |
-| `inference` | `max_new_tokens` | `512` | Max generation length |
-| `inference` | `temperature` | `0.7` | Sampling temperature |
+### Export
 
-Secrets go in `.env` (never committed).
+| Key | Default | Description |
+|-----|---------|-------------|
+| `subdomain` | *(from .env)* | Zendesk subdomain |
+| `start_time` | `null` | Default start date (ISO, overridden by `--start-date`) |
+| `end_time` | `null` | Default end date (ISO, overridden by `--end-date`) |
+| `channel_id` | `sunshine_conversations_facebook_messenger` | Zendesk `via:` channel ID |
+| `max_retries` | `5` | Rate-limit retry count |
+| `retry_backoff_base` | `2` | Exponential backoff seconds |
+| `max_pages` | `5000` | Safety limit (total API calls) |
+| `comment_concurrency` | `5` | Parallel comment fetch workers |
+| `output_dir` | `data/raw` | Ticket JSON output directory |
+| `checkpoint_file` | `data/export_cursor.json` | Resume state |
+
+### Dataset
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `input_dir` | `data/raw` | Raw ticket JSON directory |
+| `output_dir` | `data` | JSONL output directory |
+| `train_ratio` | `0.9` | Train/valid split proportion |
+| `shuffle_seed` | `42` | Reproducible shuffle |
+| `agent_names` | `["Kissadakron...", "Surachai...", "Support Team"]` | Known agent names for Sunshine classification |
+| `clean_attachments` | `true` | Strip attachment metadata (`→ [image]`) |
+| `clean_urls` | `true` | Replace raw URLs (`→ [link]`) |
+| `dedupe_canned` | `true` | Remove repeated canned closing messages |
+| `min_message_length` | `3` | Skip messages shorter than N chars |
+| `system_prompt` | *(Thai support agent)* | Injected into every sample |
+
+### Training
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `base_model` | `unsloth/Qwen2.5-1.5B-Instruct` | HuggingFace model ID |
+| `max_seq_length` | `2048` | Token context window |
+| `load_in_4bit` | `true` | 4-bit quantization |
+| `lora_r` | `16` | LoRA rank |
+| `lora_alpha` | `16` | LoRA alpha |
+| `lora_dropout` | `0.0` | LoRA dropout |
+| `num_epochs` | `3` | Training epochs |
+| `learning_rate` | `2.0e-4` | Learning rate |
+| `per_device_train_batch_size` | `4` | Batch size |
+| `gradient_accumulation_steps` | `4` | Gradient accumulation |
+| `output_dir` | `adapters` | Adapter save directory |
+
+### Inference
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `adapter_dir` | `adapters/lora_adapter` | LoRA adapter path |
+| `base_model` | `unsloth/Qwen2.5-1.5B-Instruct` | Base model for inference |
+| `max_new_tokens` | `512` | Max generation length |
+| `temperature` | `0.7` | Sampling temperature |
+| `top_p` | `0.9` | Nucleus sampling |
 
 ---
 
 ## Scope
 
-**Included:** Facebook Messenger only, Thai language, historical ticket export, LoRA fine-tuning, local inference.
+**Included:** Facebook Messenger (Sunshine Conversations) only, Thai language, historical ticket export with full conversations, data quality cleanup, LoRA fine-tuning, local inference.
 
 **Excluded:** RAG, FastAPI, CI/CD, MLOps, auto-reply, dashboard, multi-language.
 
