@@ -34,6 +34,7 @@ def main() -> int:
     train_ratio = cfg.get("train_ratio", 0.9)
     shuffle_seed = cfg.get("shuffle_seed", 42)
     system_prompt = cfg.get("system_prompt", "")
+    agent_names = cfg.get("agent_names", [])
 
     print(f"Building dataset from {input_dir}...")
     result = generate_dataset(
@@ -42,6 +43,7 @@ def main() -> int:
         train_ratio=train_ratio,
         shuffle_seed=shuffle_seed,
         system_prompt=system_prompt.strip(),
+        agent_names=agent_names,
     )
 
     if "error" in result:

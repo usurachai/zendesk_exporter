@@ -65,12 +65,18 @@ def _extract_customer_name(comments: list[dict[str, Any]]) -> str | None:
 def _split_sunshine_messages(
     body: str,
     customer_name: str,
+    agent_names: set[str],
 ) -> list[tuple[str, str]]:
     """Split a Sunshine Conversations comment body into individual messages.
 
     A single Zendesk comment can contain multiple messages from different
     speakers. This splits at each "(HH:MM:SS) Name:" boundary and classifies
     each sub-message as customer or agent.
+
+    Classification priority:
+      1. Name matches known agent list → agent
+      2. Name matches customer name → customer
+      3. Otherwise → agent (safe default)
 
     Returns list of (role, cleaned_body) tuples.
     """
@@ -81,7 +87,6 @@ def _split_sunshine_messages(
     for seg in segments:
         m = _SUNSHINE_AUTHOR_RE.match(seg)
         if not m:
-            # Unparseable segment — skip or treat as continuation
             continue
 
         author = m.group(2).strip()
@@ -91,7 +96,15 @@ def _split_sunshine_messages(
         if not cleaned:
             continue  # skip attachment-only segments with no text
 
-        role = "customer" if author.lower() == customer_name.lower() else "agent"
+        # Classification: known agent > customer match > default agent
+        if author in agent_names:
+            role = "agent"
+        elif author.lower() == customer_name.lower():
+            role = "customer"
+        else:
+            logger.debug("Unknown speaker '%s' — classifying as agent", author)
+            role = "agent"
+
         results.append((role, cleaned))
 
     return results
@@ -141,7 +154,10 @@ def _classify_sunshine(
         return "agent", cleaned
 
 
-def build_conversation(ticket: dict[str, Any]) -> dict[str, Any] | None:
+def build_conversation(
+    ticket: dict[str, Any],
+    agent_names: set[str] | None = None,
+) -> dict[str, Any] | None:
     """Convert a single raw ticket JSON into a conversation object.
 
     Handles both native Zendesk format and Sunshine Conversations format.
@@ -185,7 +201,7 @@ def build_conversation(ticket: dict[str, Any]) -> dict[str, Any] | None:
 
         if sunshine and customer_name:
             # Split multi-message Sunshine comment into individual messages
-            sub_messages = _split_sunshine_messages(body, customer_name)
+            sub_messages = _split_sunshine_messages(body, customer_name, agent_names or set())
         else:
             # Native format: FR-101, FR-102
             role = "customer" if author_id == requester_id else "agent"
@@ -267,6 +283,7 @@ def generate_dataset(
     train_ratio: float = 0.9,
     shuffle_seed: int = 42,
     system_prompt: str = "",
+    agent_names: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build conversations from raw tickets and generate train/valid JSONL files.
 
@@ -298,7 +315,7 @@ def generate_dataset(
             skipped += 1
             continue
 
-        conv = build_conversation(ticket)
+        conv = build_conversation(ticket, agent_names=set(agent_names or []))
         if conv:
             conversations.append(conv)
         else:

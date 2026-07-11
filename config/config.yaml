@@ -18,6 +18,10 @@ dataset:
   output_dir: "data"
   train_ratio: 0.9          # 90% train, 10% valid
   shuffle_seed: 42
+  agent_names:              # known support agent names (Sunshine Conversations)
+    - "Kissadakron Duangparsart"
+    - "Surachai Uthaisamairath"
+    - "Support Team"
   system_prompt: |
     You are a helpful, polite customer support agent for a Thai company.
     Follow the company's support SOP. Ask for missing information before
