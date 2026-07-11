@@ -497,6 +497,62 @@ def _to_unsloth_format(
     return {"messages": messages}
 
 
+# ---------------------------------------------------------------
+# Shared: build conversations from raw files (used by both
+# generate_dataset and --analyze)
+# ---------------------------------------------------------------
+
+
+def _build_conversations(
+    raw_dir: str,
+    agent_names: set[str] | None = None,
+    clean_attachments: bool = True,
+    clean_urls: bool = True,
+    redact_pii: bool = True,
+    clean_fillers: bool = True,
+    drop_filler_only: bool = True,
+    pii_safe_patterns: list[str] | None = None,
+    min_length: int = 3,
+) -> list[dict[str, Any]]:
+    """Load all raw ticket files and build conversation objects.
+
+    Shared helper used by both generate_dataset and --analyze mode.
+    Returns list of conversation dicts. Handles corrupt files gracefully.
+    """
+    raw_path = Path(raw_dir)
+    ticket_files = sorted(raw_path.glob("ticket_*.json"))
+    logger.info("Processing %d raw ticket files from %s", len(ticket_files), raw_dir)
+
+    conversations: list[dict[str, Any]] = []
+    skipped = 0
+    for tf in ticket_files:
+        try:
+            ticket = json.loads(tf.read_text())
+        except (json.JSONDecodeError, OSError):
+            logger.warning("Skipping corrupt/unreadable file: %s", tf.name)
+            skipped += 1
+            continue
+
+        conv = build_conversation(
+            ticket,
+            agent_names=agent_names or set(),
+            clean_attachments=clean_attachments,
+            clean_urls=clean_urls,
+            redact_pii=redact_pii,
+            clean_fillers=clean_fillers,
+            drop_filler_only=drop_filler_only,
+            pii_safe_patterns=pii_safe_patterns,
+            min_length=min_length,
+        )
+        if conv:
+            conversations.append(conv)
+        else:
+            skipped += 1
+
+    logger.info("Built %d conversations (%d skipped)", len(conversations), skipped)
+    return conversations
+
+
 def generate_dataset(
     raw_dir: str,
     output_dir: str,
@@ -533,37 +589,18 @@ def generate_dataset(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Load all raw tickets
-    ticket_files = sorted(raw_path.glob("ticket_*.json"))
-    logger.info("Processing %d raw ticket files from %s", len(ticket_files), raw_dir)
-
-    conversations: list[dict[str, Any]] = []
-    skipped = 0
-    for tf in ticket_files:
-        try:
-            ticket = json.loads(tf.read_text())
-        except json.JSONDecodeError:
-            logger.warning("Skipping corrupt file: %s", tf.name)
-            skipped += 1
-            continue
-
-        conv = build_conversation(
-            ticket,
-            agent_names=set(agent_names or []),
-            clean_attachments=clean_attachments,
-            clean_urls=clean_urls,
-            redact_pii=redact_pii,
-            clean_fillers=clean_fillers,
-            drop_filler_only=drop_filler_only,
-            pii_safe_patterns=pii_safe_patterns,
-            min_length=min_message_length,
-        )
-        if conv:
-            conversations.append(conv)
-        else:
-            skipped += 1
-
-    logger.info("Built %d conversations (%d skipped)", len(conversations), skipped)
+    # Load all raw tickets → conversation objects
+    conversations = _build_conversations(
+        raw_dir=raw_dir,
+        agent_names=set(agent_names or []),
+        clean_attachments=clean_attachments,
+        clean_urls=clean_urls,
+        redact_pii=redact_pii,
+        clean_fillers=clean_fillers,
+        drop_filler_only=drop_filler_only,
+        pii_safe_patterns=pii_safe_patterns,
+        min_length=min_message_length,
+    )
 
     if not conversations:
         logger.error("No conversations built. Check your raw data.")
@@ -767,23 +804,27 @@ def _dedupe_sentences(
 def _analyze_sentences(
     conversations: list[dict[str, Any]],
     top_n: int = 50,
-) -> list[tuple[str, int]]:
+) -> list[tuple[str, int, str]]:
     """Analyze sentence frequencies and return candidates for filtering.
 
-    Returns the top-N most frequent sentences (min 15 chars) sorted by
-    frequency, for user review and manual inclusion in filter_sentences.
+    Returns the top-N most frequent sentences (min 15 chars) as
+    (sentence, count, role) tuples sorted by frequency.
     """
     from collections import Counter
 
     sent_freq: Counter = Counter()
+    sent_role: dict[str, str] = {}  # cache role for each sentence
     for conv in conversations:
         for turn in conv["conversation"]:
+            role = turn["role"]
             for sent in _split_sentences(turn["content"]):
                 if len(sent) > 15:
                     sent_freq[sent] += 1
+                    if sent not in sent_role:
+                        sent_role[sent] = role
 
-    # Return sentences appearing >1 time, sorted by frequency
-    candidates = [(s, c) for s, c in sent_freq.items() if c > 1]
+    candidates = [(s, c, sent_role.get(s, "n/a"))
+                  for s, c in sent_freq.items() if c > 1]
     candidates.sort(key=lambda x: -x[1])
     return candidates[:top_n]
 

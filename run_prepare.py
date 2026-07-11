@@ -3,19 +3,18 @@
 train.jsonl / valid.jsonl in Unsloth chat format.
 
 Usage:
-    python run_prepare.py [--config config/config.yaml] [--analyze]
+    python run_prepare.py [--config config/config.yaml] [--analyze] [--verbose]
 """
 
 import argparse
-import json
+import logging
 import sys
 
 from src.common.config import get_dataset_config, load_config
 from src.dataset import (
-    build_conversation,
     generate_dataset,
+    _build_conversations,
     _analyze_sentences,
-    _split_sentences,
 )
 
 
@@ -33,57 +32,45 @@ def main() -> int:
         action="store_true",
         help="Analyze sentence frequencies and output filter candidates",
     )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable DEBUG-level logging",
+    )
     args = parser.parse_args()
 
+    if args.verbose:
+        logging.getLogger("src.dataset").setLevel(logging.DEBUG)
+
+    # Load config once, pass to all functions
     if args.config:
         cfg = load_config(args.config).get("dataset", {})
     else:
         cfg = get_dataset_config()
 
-    input_dir = cfg.get("input_dir", "data/raw")
-    output_dir = cfg.get("output_dir", "data")
-    train_ratio = cfg.get("train_ratio", 0.9)
-    shuffle_seed = cfg.get("shuffle_seed", 42)
-    system_prompt = cfg.get("system_prompt", "")
-    agent_names = cfg.get("agent_names", [])
-    clean_attachments = cfg.get("clean_attachments", True)
-    clean_urls = cfg.get("clean_urls", True)
-    dedupe_canned = cfg.get("dedupe_canned", True)
-    min_msg_len = cfg.get("min_message_length", 3)
-    redact_pii = cfg.get("redact_pii", True)
-    pii_safe = cfg.get("pii_safe_patterns", [])
-    dedupe_exact = cfg.get("dedupe_exact", True)
-    max_dup = cfg.get("max_duplicate_count", 3)
-    dedupe_sent = cfg.get("dedupe_sentences", True)
-    filter_sentences = cfg.get("filter_sentences", [])
-    clean_fillers = cfg.get("clean_fillers", True)
-    drop_filler_only = cfg.get("drop_filler_only", True)
-
     if args.analyze:
-        return _run_analyze(input_dir, agent_names, clean_attachments,
-                            clean_urls, redact_pii, pii_safe, clean_fillers,
-                            drop_filler_only, min_msg_len)
+        return _run_analyze(cfg)
 
-    print(f"Building dataset from {input_dir}...")
+    print(f"Building dataset from {cfg.get('input_dir', 'data/raw')}...")
     result = generate_dataset(
-        raw_dir=input_dir,
-        output_dir=output_dir,
-        train_ratio=train_ratio,
-        shuffle_seed=shuffle_seed,
-        system_prompt=system_prompt.strip(),
-        agent_names=agent_names,
-        clean_attachments=clean_attachments,
-        clean_urls=clean_urls,
-        dedupe_canned=dedupe_canned,
-        redact_pii=redact_pii,
-        pii_safe_patterns=pii_safe,
-        dedupe_exact=dedupe_exact,
-        max_duplicate_count=max_dup,
-        dedupe_sentences=dedupe_sent,
-        filter_sentences=filter_sentences,
-        clean_fillers=clean_fillers,
-        drop_filler_only=drop_filler_only,
-        min_message_length=min_msg_len,
+        raw_dir=cfg.get("input_dir", "data/raw"),
+        output_dir=cfg.get("output_dir", "data"),
+        train_ratio=cfg.get("train_ratio", 0.9),
+        shuffle_seed=cfg.get("shuffle_seed", 42),
+        system_prompt=cfg.get("system_prompt", "").strip(),
+        agent_names=cfg.get("agent_names", []),
+        clean_attachments=cfg.get("clean_attachments", True),
+        clean_urls=cfg.get("clean_urls", True),
+        dedupe_canned=cfg.get("dedupe_canned", True),
+        redact_pii=cfg.get("redact_pii", True),
+        clean_fillers=cfg.get("clean_fillers", True),
+        drop_filler_only=cfg.get("drop_filler_only", True),
+        pii_safe_patterns=cfg.get("pii_safe_patterns", []),
+        dedupe_exact=cfg.get("dedupe_exact", True),
+        max_duplicate_count=cfg.get("max_duplicate_count", 3),
+        dedupe_sentences=cfg.get("dedupe_sentences", True),
+        filter_sentences=cfg.get("filter_sentences", []),
+        min_message_length=cfg.get("min_message_length", 3),
     )
 
     if "error" in result:
@@ -99,71 +86,39 @@ def main() -> int:
     return 0
 
 
-def _run_analyze(
-    input_dir: str,
-    agent_names: list[str],
-    clean_attachments: bool,
-    clean_urls: bool,
-    redact_pii: bool,
-    pii_safe: list[str],
-    clean_fillers: bool,
-    drop_filler_only: bool,
-    min_msg_len: int,
-) -> int:
+def _run_analyze(cfg: dict) -> int:
     """Analyze sentence frequencies and output candidates for filter_sentences."""
-    import os
-    from pathlib import Path
+    input_dir = cfg.get("input_dir", "data/raw")
+    agent_names = set(cfg.get("agent_names", []))
 
-    raw_path = Path(input_dir)
-    if not raw_path.exists():
-        print(f"Error: input directory '{input_dir}' does not exist.")
+    conversations = _build_conversations(
+        raw_dir=input_dir,
+        agent_names=agent_names,
+        clean_attachments=cfg.get("clean_attachments", True),
+        clean_urls=cfg.get("clean_urls", True),
+        redact_pii=cfg.get("redact_pii", True),
+        clean_fillers=cfg.get("clean_fillers", True),
+        drop_filler_only=cfg.get("drop_filler_only", True),
+        pii_safe_patterns=cfg.get("pii_safe_patterns", []),
+        min_length=cfg.get("min_message_length", 3),
+    )
+
+    if not conversations:
+        print(f"Error: no conversations built from '{input_dir}'.")
         return 1
 
-    agent_set = set(agent_names) if agent_names else set()
-    all_convs = []
-
-    for fn in sorted(os.listdir(raw_path)):
-        if not fn.endswith(".json"):
-            continue
-        with open(raw_path / fn) as f:
-            ticket = json.load(f)
-        conv = build_conversation(
-            ticket,
-            agent_names=agent_set,
-            clean_attachments=clean_attachments,
-            clean_urls=clean_urls,
-            redact_pii=redact_pii,
-            clean_fillers=clean_fillers,
-            drop_filler_only=drop_filler_only,
-            pii_safe_patterns=pii_safe,
-            min_length=min_msg_len,
-        )
-        if conv and conv.get("conversation"):
-            all_convs.append(conv)
-
-    candidates = _analyze_sentences(all_convs, top_n=60)
-    print(f"\nAnalyzed {len(all_convs)} conversations.")
+    candidates = _analyze_sentences(conversations, top_n=60)
+    print(f"\nAnalyzed {len(conversations)} conversations.")
     print(f"Top {len(candidates)} candidate sentences for filtering:\n")
 
-    for i, (sent, count) in enumerate(candidates, 1):
-        role = "n/a"
-        # Find the role of this sentence
-        for conv in all_convs:
-            for turn in conv["conversation"]:
-                if sent in turn["content"]:
-                    role = turn["role"]
-                    break
-            if role != "n/a":
-                break
-
+    for i, (sent, count, role) in enumerate(candidates, 1):
         preview = sent[:80] + "..." if len(sent) > 80 else sent
         print(f"  {i:>3}. [{role:>8}] ({count:>4}x) \"{preview}\"")
 
     print(f"\nAdd chosen sentences to 'filter_sentences' in config/dataset section.")
     print("Example YAML:")
     print("  filter_sentences:")
-    for sent, _ in candidates[:5]:
-        # Truncate to 120 chars for display
+    for sent, _, _ in candidates[:5]:
         display = sent[:120]
         print(f'    - "{display}"')
     print("  # ... add more from the list above")
