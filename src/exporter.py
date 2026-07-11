@@ -108,7 +108,60 @@ def _search_tickets(
     """Use Zendesk Search API to find tickets by channel and date range.
 
     Much faster than Incremental API for date-range exports (100 tickets/page).
+    Handles the 1000-result Search API cap by auto-splitting the date range.
     """
+    tickets = _search_tickets_page(
+        session, cfg, start_date, end_date, channel_id, per_page,
+    )
+
+    # Zendesk Search API caps at 1000 results. If we hit the cap,
+    # split the date range in half and search each half recursively.
+    if len(tickets) >= 1000:
+        logger.warning(
+            "Hit 1000-result Search API cap (%s → %s). Splitting date range...",
+            start_date, end_date or "now",
+        )
+        middle = _split_date_range(start_date, end_date)
+        if middle is None:
+            logger.warning("Date range is a single day — cannot split further.")
+            return tickets
+
+        logger.info("Split into [%s → %s) and [%s → %s]",
+                     start_date, middle, middle, end_date or "now")
+        first = _search_tickets(session, cfg, start_date, middle, channel_id, per_page)
+        second = _search_tickets(session, cfg, middle, end_date, channel_id, per_page)
+        tickets = first + second
+        logger.info("Split search complete: %d total tickets", len(tickets))
+
+    return tickets
+
+
+def _split_date_range(start: str, end: str | None) -> str | None:
+    """Return the midpoint date between start and end, or None if same day."""
+    from datetime import timedelta
+
+    s = datetime.fromisoformat(start)
+    if end is None:
+        e = datetime.now(timezone.utc)
+    else:
+        e = datetime.fromisoformat(end)
+
+    diff = (e - s).days
+    if diff < 2:
+        return None  # can't split further
+
+    middle = s + timedelta(days=diff // 2)
+    return middle.strftime("%Y-%m-%d")
+
+
+def _search_tickets_page(
+    session: requests.Session,
+    cfg: dict[str, Any],
+    start_date: str,
+    end_date: str | None,
+    channel_id: str,
+    per_page: int,
+) -> list[dict[str, Any]]:
     # Build search query with ISO date strings (not Unix timestamps)
     query_parts = ["type:ticket", f"via:{channel_id}"]
     query_parts.append(f"created>={start_date}")
@@ -135,6 +188,16 @@ def _search_tickets(
             resp = session.get(url, auth=auth, params=params, timeout=30)
         else:
             resp = session.get(next_url, auth=auth, timeout=30)
+
+        # Zendesk Search API caps at 1000 results — page 11+ returns 422.
+        # Catch it gracefully so the caller can split the date range.
+        if resp.status_code == 422 and page > 10:
+            logger.debug(
+                "Search page %d: 422 (likely 1000-result cap), stopping pagination",
+                page,
+            )
+            break
+
         resp.raise_for_status()
         data = resp.json()
 
