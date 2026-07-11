@@ -14,6 +14,8 @@ from src.dataset import (
     _dedupe_canned,
     _discover_canned_signatures,
     generate_dataset,
+    _extract_customer_name,
+    _is_sunshine_format,
 )
 
 from tests.fixtures import (
@@ -197,14 +199,36 @@ class TestCannedPhraseRemoval:
     """Test stripping of canned phrases from messages."""
 
     def test_simple_removal(self):
+        """Mid-message phrase is now preserved (boundary-only stripping).
+        Only strips at start or end of message."""
         result = _remove_canned_phrase(
             "ขอบคุณครับ หากต้องการสอบถามเพิ่มเติม ติดต่อได้ครับ",
+            "ต้องการสอบถามเพิ่มเติม",
+        )
+        # Mid-message: preserved as-is (no garbling)
+        assert result is not None
+        assert "ต้องการสอบถามเพิ่มเติม" in result
+        assert "ขอบคุณครับ" in result
+
+    def test_strips_from_end(self):
+        """Phrase at end of message gets stripped."""
+        result = _remove_canned_phrase(
+            "ขอบคุณครับ ต้องการสอบถามเพิ่มเติม",
             "ต้องการสอบถามเพิ่มเติม",
         )
         assert result is not None
         assert "ต้องการสอบถามเพิ่มเติม" not in result
         assert "ขอบคุณครับ" in result
-        assert "ติดต่อได้ครับ" in result
+
+    def test_strips_from_start(self):
+        """Phrase at start of message gets stripped."""
+        result = _remove_canned_phrase(
+            "ต้องการสอบถามเพิ่มเติม ขอบคุณครับ",
+            "ต้องการสอบถามเพิ่มเติม",
+        )
+        assert result is not None
+        assert "ต้องการสอบถามเพิ่มเติม" not in result
+        assert "ขอบคุณครับ" in result
 
     def test_removal_makes_empty(self):
         result = _remove_canned_phrase("ต้องการสอบถามเพิ่มเติม", "ต้องการสอบถามเพิ่มเติม")
@@ -233,6 +257,209 @@ class TestCannedTemplateHandling:
         agent_msgs = [t for t in conv["conversation"] if t["role"] == "agent"]
         assert len(agent_msgs) == 1
         assert "แก้ไขให้แล้ว" in agent_msgs[0]["content"]
+
+
+# ---------------------------------------------------------------
+# Sunshine format edge cases
+# ---------------------------------------------------------------
+
+class TestSunshineEdgeCases:
+    """Test Sunshine conversation format detection and name extraction."""
+
+    def test_extract_customer_name_no_private_comment(self):
+        """No private comment → returns None."""
+        ticket = {
+            "ticket_id": 1,
+            "metadata": {"subject": ""},
+            "comments": [
+                {"author_id": -1, "public": True, "body": "(00:00) User: hello"}
+            ]
+        }
+        name = _extract_customer_name(ticket.get("comments", []))
+        assert name is None
+
+    def test_non_sunshine_format(self):
+        """Regular Zendesk comments (not via Sunshine) → detected as non-Sunshine."""
+        comments = [
+            {"author_id": 123, "public": True, "body": "สวัสดีครับ"},
+            {"author_id": 456, "public": True, "body": "สวัสดีค่ะ"},
+        ]
+        assert _is_sunshine_format(comments) is False
+
+    def test_unknown_speaker_during_parse(self):
+        """Speaker not in agent_names and not matching customer → agent (safe default)."""
+        ticket = {
+            "ticket_id": 1,
+            "metadata": {"subject": ""},
+            "comments": [
+                {"id": 1, "author_id": 1, "public": False, "body": "Conversation with Jane"},
+                {"id": 2, "author_id": -1, "public": True,
+                 "body": "(08:00:00) Jane: hello\n(08:01:00) UnknownPerson: hi there"},
+            ]
+        }
+        conv = build_conversation(ticket, agent_names={"Support Team"},
+                                   clean_fillers=False, drop_filler_only=False, min_length=1)
+        assert conv is not None
+        # Jane → customer, UnknownPerson → agent (safe default)
+        roles = [t["role"] for t in conv["conversation"]]
+        assert roles == ["customer", "agent"]
+
+
+# ---------------------------------------------------------------
+# PII edge cases
+# ---------------------------------------------------------------
+
+class TestPIIEdgeCases:
+    """Test PII redaction edge cases."""
+
+    def test_no_pii_unchanged(self):
+        body = "สวัสดีครับ วันนี้เป็นไงบ้าง"
+        cleaned = _clean_message(body, redact_pii=True)
+        assert cleaned is not None
+        assert cleaned == body.strip()
+
+    def test_multiple_pii_in_one_message(self):
+        body = "โทร 0812345678 หรือ email test@example.com และ 02-123-4567"
+        cleaned = _clean_message(body, redact_pii=True)
+        assert cleaned is not None
+        assert "0812345678" not in cleaned
+        assert "test@example.com" not in cleaned
+        assert "02-123-4567" not in cleaned
+        assert cleaned.count("[phone]") == 2
+        assert cleaned.count("[email]") == 1
+
+    def test_redact_pii_off(self):
+        body = "โทร 0812345678"
+        cleaned = _clean_message(body, redact_pii=False)
+        assert cleaned is not None
+        assert "0812345678" in cleaned
+
+
+# ---------------------------------------------------------------
+# _clean_message edge cases
+# ---------------------------------------------------------------
+
+class TestCleanMessageEdgeCases:
+    """Test _clean_message edge cases."""
+
+    def test_url_only_becomes_empty(self):
+        """URL-only message → empty after URL→[link] strip."""
+        body = "https://example.com/test"
+        cleaned = _clean_message(body, clean_urls=True)
+        assert cleaned is None  # stripped to empty
+
+    def test_clean_attachments_off(self):
+        body = "screenshot.png\nURL: https://example.com/abc\nType: image/png\nSize: 12345"
+        cleaned = _clean_message(body, clean_attachments=False)
+        assert cleaned is not None
+        assert "screenshot.png" in cleaned
+
+
+# ---------------------------------------------------------------
+# generate_dataset error paths
+# ---------------------------------------------------------------
+
+class TestGenerateDatasetErrors:
+    """Test generate_dataset error handling."""
+
+    def test_empty_raw_dir(self, tmp_path):
+        """No ticket files → error returned."""
+        raw_dir = tmp_path / "empty_raw"
+        raw_dir.mkdir()
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+
+        result = generate_dataset(
+            raw_dir=str(raw_dir),
+            output_dir=str(out_dir),
+            train_ratio=1.0,
+            shuffle_seed=42,
+            system_prompt="test",
+        )
+        assert "error" in result
+        assert result["error"] == "no_conversations"
+
+
+# ---------------------------------------------------------------
+# Canned dedup: dominant template
+# ---------------------------------------------------------------
+
+class TestCannedDedupDominant:
+    """Test canned dedup with dominant templates (>=60% coverage)."""
+
+    def test_dominant_template_kept_and_dropped(self):
+        """Dominant template kept max_copies times, then dropped."""
+        # Message where sig covers 100% of body
+        dominator = "ต้องขออภัยในความไม่สะดวกด้วย"
+        convs = [
+            {"conversation": [{"role": "agent", "content": dominator}]},
+            {"conversation": [{"role": "agent", "content": dominator}]},
+            {"conversation": [{"role": "agent", "content": dominator}]},
+            {"conversation": [{"role": "user", "content": "hello"}, {"role": "agent", "content": dominator}]},
+        ]
+        result = _dedupe_canned(convs, max_copies=2)
+        # First 2 copies kept, 3rd+ dropped or conv becomes broken
+        # 4th conv loses agent msg → 1 turn → dropped
+        assert len(result) >= 1
+
+    def test_no_matching_sig(self):
+        """Message with no matching signature → passed through intact."""
+        convs = [
+            {"conversation": [{"role": "user", "content": "unique message no sig here"}]},
+        ]
+        result = _dedupe_canned(convs, max_copies=3)
+        assert len(result) == 1
+        assert result[0]["conversation"][0]["content"] == "unique message no sig here"
+
+
+# ---------------------------------------------------------------
+# Sentence dedup edge cases
+# ---------------------------------------------------------------
+
+class TestSentenceDedupEdgeCases:
+    """Test sentence dedup boundary conditions."""
+
+    def test_all_sentences_matched_dropped(self):
+        """Multi-sentence message where all sentences match filter → conv dropped."""
+        convs = [{"conversation": [
+            {"role": "agent", "content": "ข้อความแรก. ข้อความที่สอง"}
+        ]}]
+        result = _dedupe_sentences(convs, filter_list={"ข้อความแรก", "ข้อความที่สอง"})
+        # Both sentences matched → no kept sentences → entire turn dropped → empty conv
+        assert len(result) == 0
+
+    def test_safe_replace_phrase_not_found(self):
+        """Filter phrase not in body → unchanged."""
+        convs = [{"conversation": [
+            {"role": "agent", "content": "ข้อความปกติ"}
+        ]}]
+        result = _dedupe_sentences(convs, filter_list={"ไม่พบในข้อความ"})
+        assert result[0]["conversation"][0]["content"] == "ข้อความปกติ"
+
+
+# ---------------------------------------------------------------
+# _longest_matching_sig edge cases
+# ---------------------------------------------------------------
+
+class TestLongestMatchingSig:
+    """Test longest matching signature lookup."""
+
+    def test_no_sig_in_body(self):
+        """No signature substring found in body → returns None."""
+        from src.dataset import _longest_matching_sig
+        body = "ข้อความปกติไม่มีการซ้ำ"
+        sigs = ["a" * 25, "b" * 25]
+        result = _longest_matching_sig(body, sigs)
+        assert result is None
+
+    def test_longest_sig_wins(self):
+        """Among multiple matching sigs, the longest (pre-sorted) is returned first."""
+        from src.dataset import _longest_matching_sig
+        body = "สวัสดีครับผมชื่อสมชายครับ"
+        # Must pass sigs sorted by length descending (as _dedupe_canned does)
+        sigs = sorted(["ครับผม", "สวัสดีครับผมชื่อสมชายครับ"], key=len, reverse=True)
+        result = _longest_matching_sig(body, sigs)
+        assert result == "สวัสดีครับผมชื่อสมชายครับ"  # longest match, comes first in sorted
 
 
 # ---------------------------------------------------------------
@@ -330,13 +557,26 @@ class TestSentenceDedup:
     """Test sentence-level dedup with filter list."""
 
     def test_filter_strips_from_single_sentence(self):
+        """Mid-sentence filter phrase is preserved (boundary-only).
+        Only strips when at the very beginning or end."""
         convs = [{"conversation": [
             {"role": "agent", "content": "สวัสดีครับ หากต้องการสอบถามข้อมูลเพิ่มเติม ติดต่อได้ครับ"}
         ]}]
         result = _dedupe_sentences(convs, filter_list={"ต้องการสอบถามข้อมูลเพิ่มเติม"})
         content = result[0]["conversation"][0]["content"]
-        assert "ต้องการสอบถามข้อมูลเพิ่มเติม" not in content
+        # Mid-message: preserved
+        assert "ต้องการสอบถามข้อมูลเพิ่มเติม" in content
         assert "สวัสดีครับ" in content
+
+    def test_filter_strips_from_end(self):
+        """Filter phrase at end of single sentence gets stripped."""
+        convs = [{"conversation": [
+            {"role": "agent", "content": "ยินดีมากๆ หากต้องการสอบถามข้อมูลเพิ่มเติม"}
+        ]}]
+        result = _dedupe_sentences(convs, filter_list={"หากต้องการสอบถามข้อมูลเพิ่มเติม"})
+        content = result[0]["conversation"][0]["content"]
+        assert "ต้องการสอบถามข้อมูลเพิ่มเติม" not in content
+        assert "ยินดีมากๆ" in content
 
     def test_filter_drops_from_multi_sentence(self):
         convs = [{"conversation": [
