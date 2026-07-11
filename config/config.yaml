@@ -1,0 +1,49 @@
+# Zendesk Export Settings
+export:
+  subdomain: null           # override from .env if needed
+  start_time: null          # ISO datetime, e.g. "2024-01-01T00:00:00Z"
+  incremental: true         # use incremental export API
+  items_per_page: 100       # tickets per API page
+  max_retries: 5            # rate-limit retries
+  retry_backoff_base: 2     # exponential backoff multiplier (seconds)
+  output_dir: "data/raw"
+  checkpoint_file: "data/export_cursor.json"  # resume cursor
+
+# Dataset Settings
+dataset:
+  input_dir: "data/raw"
+  output_dir: "data"
+  train_ratio: 0.9          # 90% train, 10% valid
+  shuffle_seed: 42
+  system_prompt: |
+    You are a helpful, polite customer support agent for a Thai company.
+    Follow the company's support SOP. Ask for missing information before
+    troubleshooting. Escalate when appropriate. Respond in Thai.
+
+# Training Settings
+training:
+  base_model: "unsloth/Qwen2.5-1.5B-Instruct"
+  max_seq_length: 2048
+  load_in_4bit: true
+  lora_r: 16
+  lora_alpha: 16
+  lora_dropout: 0.0
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+  use_rslora: false
+  learning_rate: 2.0e-4
+  num_epochs: 3
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  warmup_steps: 5
+  logging_steps: 1
+  save_steps: 100
+  output_dir: "adapters"
+  resume_from_checkpoint: null
+
+# Inference Settings
+inference:
+  adapter_dir: "adapters"
+  base_model: "unsloth/Qwen2.5-1.5B-Instruct"
+  max_new_tokens: 512
+  temperature: 0.7
+  top_p: 0.9
