@@ -12,8 +12,10 @@ Functional Requirements:
 
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -35,7 +37,7 @@ def _build_session(max_retries: int, backoff_base: float) -> requests.Session:
         total=max_retries,
         backoff_factor=backoff_base,
         status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["GET", "POST", "PUT", "DELETE"],
+        allowed_methods=["GET"],
     )
     adapter = HTTPAdapter(max_retries=retry_strategy)
     session = requests.Session()
@@ -49,10 +51,19 @@ def _api_url(cfg: dict[str, Any], path: str) -> str:
     subdomain = cfg["subdomain"]
     if not subdomain:
         raise ValueError(
-            "ZENDESK_SUBDOMAIN is not set in .env or config. "
-            "Set it before running the exporter."
+            "ZENDESK_SUBDOMAIN is not set in .env or config."
         )
     return f"https://{subdomain}.zendesk.com/api/v2{path}"
+
+
+def _parse_date(datestr: str | None) -> int | None:
+    """Convert ISO date string to Unix timestamp. Returns None if empty."""
+    if not datestr:
+        return None
+    dt = datetime.fromisoformat(datestr)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return int(dt.timestamp())
 
 
 # ---------------------------------------------------------------
@@ -60,21 +71,21 @@ def _api_url(cfg: dict[str, Any], path: str) -> str:
 # ---------------------------------------------------------------
 
 
-def _load_cursor(checkpoint_path: Path) -> int | None:
-    """Read persisted cursor from checkpoint file. Returns None if absent."""
+def _load_cursor(checkpoint_path: Path) -> str | None:
+    """Read persisted next_page URL from checkpoint. Returns None if absent."""
     if checkpoint_path.exists():
         try:
             data = json.loads(checkpoint_path.read_text())
-            return data.get("cursor")
+            return data.get("next_page_url")
         except (json.JSONDecodeError, KeyError):
             logger.warning("Corrupt checkpoint file; starting fresh.")
     return None
 
 
-def _save_cursor(checkpoint_path: Path, cursor: int | None) -> None:
-    """Persist cursor for resume."""
+def _save_cursor(checkpoint_path: Path, next_page_url: str | None) -> None:
+    """Persist next_page URL for resume."""
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-    checkpoint_path.write_text(json.dumps({"cursor": cursor}))
+    checkpoint_path.write_text(json.dumps({"next_page_url": next_page_url}))
 
 
 # ---------------------------------------------------------------
@@ -86,28 +97,29 @@ def _fetch_tickets_page(
     session: requests.Session,
     cfg: dict[str, Any],
     start_time: int | None = None,
+    next_page_url: str | None = None,
 ) -> dict[str, Any]:
     """Fetch a page of tickets from the Zendesk Incremental Tickets API.
 
-    Args:
-        session: requests Session with retry logic.
-        cfg: Export config dict.
-        start_time: Unix timestamp for the start_time parameter.
-
-    Returns:
-        API response JSON as dict.
+    On the first call, pass `start_time` (Unix timestamp). On subsequent
+    calls, pass `next_page_url` — we follow the server-provided URL directly
+    to preserve Zendesk's pagination cursor.
     """
-    params: dict[str, Any] = {}
-    if start_time is not None:
-        params["start_time"] = start_time
-    else:
-        params["start_time"] = int(time.time()) - 3600  # default: last hour
-
-    url = _api_url(cfg, "/incremental/tickets.json")
     auth = (f"{cfg['email']}/token", cfg["api_token"])
 
-    logger.info("Fetching tickets page, start_time=%s", start_time)
-    resp = session.get(url, auth=auth, params=params, timeout=60)
+    if next_page_url:
+        # Follow the exact next_page URL from Zendesk (preserves cursor state)
+        logger.debug("Following next_page URL")
+        resp = session.get(next_page_url, auth=auth, timeout=60)
+    else:
+        url = _api_url(cfg, "/incremental/tickets.json")
+        params: dict[str, Any] = {}
+        if start_time is not None:
+            params["start_time"] = start_time
+        else:
+            params["start_time"] = int(time.time()) - 3600
+        resp = session.get(url, auth=auth, params=params, timeout=60)
+
     resp.raise_for_status()
     return resp.json()
 
@@ -152,7 +164,7 @@ def _ticket_to_json(ticket: dict[str, Any]) -> dict[str, Any]:
     return {
         "ticket_id": ticket.get("id"),
         "metadata": _extract_fields(ticket),
-        "channel": "facebook_messenger",  # MVP: Facebook Messenger only
+        "channel": "facebook_messenger",
         "comments": [
             _format_comment(c)
             for c in sorted(
@@ -161,6 +173,20 @@ def _ticket_to_json(ticket: dict[str, Any]) -> dict[str, Any]:
             )
         ],
     }
+
+
+def _ticket_past_end(ticket: dict[str, Any], end_time: int | None) -> bool:
+    """Return True if the ticket's updated_at is past the end_time cutoff."""
+    if end_time is None:
+        return False
+    updated = ticket.get("updated_at", "")
+    if not updated:
+        return False
+    try:
+        dt = datetime.fromisoformat(updated.replace("Z", "+00:00"))
+        return int(dt.timestamp()) > end_time
+    except (ValueError, TypeError):
+        return False
 
 
 def _save_ticket(ticket_json: dict[str, Any], output_dir: Path) -> Path:
@@ -176,17 +202,22 @@ def _save_ticket(ticket_json: dict[str, Any], output_dir: Path) -> Path:
 # ---------------------------------------------------------------
 
 
-def run_export(config_path: str | None = None) -> dict[str, Any]:
+def run_export(
+    config_path: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict[str, Any]:
     """Execute the Zendesk incremental export.
 
     Args:
         config_path: Optional override path to config YAML.
+        start_date: ISO date string (e.g., "2024-01-01") — overrides config.
+        end_date: ISO date string — stop exporting tickets past this date.
 
     Returns:
         Summary dict with counts and status.
     """
     cfg = get_export_config()
-    # Reload full config if path overridden
     if config_path:
         from src.common.config import load_config
 
@@ -195,10 +226,7 @@ def run_export(config_path: str | None = None) -> dict[str, Any]:
 
     # Validate credentials
     if not cfg.get("subdomain") or not cfg.get("email") or not cfg.get("api_token"):
-        logger.error(
-            "Missing Zendesk credentials. Set ZENDESK_SUBDOMAIN, ZENDESK_EMAIL, "
-            "ZENDESK_API_TOKEN in .env"
-        )
+        logger.error("Missing Zendesk credentials.")
         return {"error": "missing_credentials", "tickets_exported": 0}
 
     output_dir = Path(cfg.get("output_dir", "data/raw"))
@@ -206,10 +234,29 @@ def run_export(config_path: str | None = None) -> dict[str, Any]:
 
     checkpoint_path = Path(cfg.get("checkpoint_file", "data/export_cursor.json"))
 
-    # FR-007: Resume from checkpoint
-    start_time = _load_cursor(checkpoint_path)
-    if start_time:
-        logger.info("Resuming export from cursor: %s", start_time)
+    # Resolve start_time: CLI arg > config > checkpoint > default
+    start_time: int | None = None
+    if start_date:
+        start_time = _parse_date(start_date)
+        logger.info("Using CLI start_date: %s → %s", start_date, start_time)
+    elif cfg.get("start_time"):
+        start_time = _parse_date(cfg["start_time"])
+        logger.info("Using config start_time: %s", start_time)
+
+    end_time: int | None = None
+    if end_date:
+        end_time = _parse_date(end_date)
+        logger.info("End date cutoff: %s → %s", end_date, end_time)
+    elif cfg.get("end_time"):
+        end_time = _parse_date(cfg["end_time"])
+
+    # FR-007: Resume from checkpoint (next_page URL)
+    next_page_url = _load_cursor(checkpoint_path)
+    if next_page_url:
+        logger.info("Resuming from checkpoint (next_page URL)")
+    elif start_time is None:
+        start_time = int(time.time()) - 3600
+        logger.info("No start date given, defaulting to last hour")
 
     session = _build_session(
         max_retries=cfg.get("max_retries", 5),
@@ -217,52 +264,86 @@ def run_export(config_path: str | None = None) -> dict[str, Any]:
     )
 
     tickets_exported = 0
-    next_start_time: int | None = None
+    tickets_skipped = 0
     pages = 0
+    max_pages = cfg.get("max_pages", 5000)
 
-    while True:
+    # Progress tracking
+    progress_interval = max(1, cfg.get("progress_interval", 50))
+    start_wall = time.time()
+    last_progress = start_wall
+
+    while pages < max_pages:
         pages += 1
         try:
-            data = _fetch_tickets_page(session, cfg, start_time=start_time)
+            data = _fetch_tickets_page(
+                session, cfg,
+                start_time=start_time,
+                next_page_url=next_page_url if pages > 1 else None,
+            )
         except requests.HTTPError as exc:
             logger.error("HTTP error on page %d: %s", pages, exc)
             return {
                 "error": f"http_error_page_{pages}",
                 "tickets_exported": tickets_exported,
-                "last_cursor": start_time,
+                "tickets_skipped": tickets_skipped,
             }
 
         tickets = data.get("tickets", [])
-        logger.info("Page %d: %d tickets received", pages, len(tickets))
+        page_count = len(tickets)
 
         for raw_ticket in tickets:
+            # Client-side end_date filtering
+            if _ticket_past_end(raw_ticket, end_time):
+                tickets_skipped += 1
+                continue
+
             ticket_json = _ticket_to_json(raw_ticket)
             _save_ticket(ticket_json, output_dir)
             tickets_exported += 1
 
-        # FR-003: Use next_page for cursor progression
+        # Progress reporting
+        now = time.time()
+        if pages % progress_interval == 0 or (now - last_progress) > 30:
+            elapsed = now - start_wall
+            rate = tickets_exported / elapsed if elapsed > 0 else 0
+            logger.info(
+                "Page %d | %d exported (+%d this page) | %.1f tickets/sec | %.0fs elapsed",
+                pages, tickets_exported, page_count, rate, elapsed,
+            )
+            last_progress = now
+
+        # Check for next page
         next_page_url = data.get("next_page")
         if not next_page_url:
             logger.info("No more pages. Export complete.")
             break
 
-        # Extract start_time from next_page URL for checkpoint
-        import urllib.parse as urlparse
+        # FR-007: Persist checkpoint after each page
+        _save_cursor(checkpoint_path, next_page_url)
 
-        parsed = urlparse.urlparse(next_page_url)
-        qs = urlparse.parse_qs(parsed.query)
-        next_start_time = int(qs.get("start_time", [0])[0])
-
-        # FR-007: Persist cursor after each page
-        _save_cursor(checkpoint_path, next_start_time)
-        start_time = next_start_time
+        # Safety: if end_time is set and ALL tickets on this page were past
+        # end, we're done (incremental API returns in chronological order)
+        if end_time and page_count > 0 and tickets_skipped > 0 and tickets_exported == 0:
+            # Check if even the first ticket is past end
+            if _ticket_past_end(tickets[0], end_time):
+                logger.info("All tickets past end_date cutoff. Stopping.")
+                break
 
     # Clear checkpoint on successful completion
     _save_cursor(checkpoint_path, None)
-    logger.info("Export finished: %d tickets across %d pages", tickets_exported, pages)
+
+    elapsed = time.time() - start_wall
+    logger.info(
+        "Export finished: %d tickets across %d pages in %.0fs (%.1f/sec)",
+        tickets_exported, pages, elapsed,
+        tickets_exported / elapsed if elapsed > 0 else 0,
+    )
 
     return {
         "tickets_exported": tickets_exported,
+        "tickets_skipped": tickets_skipped,
         "pages": pages,
+        "elapsed_seconds": round(elapsed, 1),
         "output_dir": str(output_dir),
     }

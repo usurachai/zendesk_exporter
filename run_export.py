@@ -3,6 +3,7 @@
 
 Usage:
     python run_export.py [--config config/config.yaml]
+    python run_export.py --start-date 2024-01-01 --end-date 2024-12-31
 """
 
 import argparse
@@ -20,10 +21,30 @@ def main() -> int:
         default=None,
         help="Path to config YAML (default: config/config.yaml)",
     )
+    parser.add_argument(
+        "--start-date",
+        default=None,
+        help="ISO date to start export from (e.g. 2024-01-01)",
+    )
+    parser.add_argument(
+        "--end-date",
+        default=None,
+        help="ISO date to stop export at (e.g. 2024-12-31)",
+    )
     args = parser.parse_args()
 
     print("Starting Zendesk export...")
-    result = run_export(config_path=args.config)
+    if args.start_date:
+        print(f"  From: {args.start_date}")
+    if args.end_date:
+        print(f"  To:   {args.end_date}")
+    print()
+
+    result = run_export(
+        config_path=args.config,
+        start_date=args.start_date,
+        end_date=args.end_date,
+    )
 
     if "error" in result:
         print(f"\nExport completed with errors: {result['error']}")
@@ -31,9 +52,12 @@ def main() -> int:
         return 1
 
     print(f"\nExport completed successfully!")
-    print(f"Tickets exported: {result['tickets_exported']}")
-    print(f"Pages processed: {result['pages']}")
-    print(f"Output directory: {result['output_dir']}")
+    print(f"  Tickets exported: {result['tickets_exported']}")
+    if result.get("tickets_skipped"):
+        print(f"  Skipped (past end): {result['tickets_skipped']}")
+    print(f"  Pages processed:   {result['pages']}")
+    print(f"  Time elapsed:      {result['elapsed_seconds']}s")
+    print(f"  Output directory:  {result['output_dir']}")
     return 0
 
 
