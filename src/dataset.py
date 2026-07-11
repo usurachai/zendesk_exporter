@@ -144,6 +144,9 @@ _CANNED_MIN_FREQ = 5   # minimum occurrences for primary detection
 _SHORT_CANNED_MIN_LEN = 15
 _SHORT_CANNED_MIN_FREQ = 30
 
+# URL replacer for canned detection (prevents URL fragments from being detected)
+_URL_RE = re.compile(r"https?://\S+")
+
 # Thai filler/particle words
 _TRAILING_FILLERS = [
     "ครับ", "ครับผม", "คับ", "คะ", "ค่ะ", "ค้า",
@@ -201,11 +204,13 @@ def _discover_canned_signatures(
     """
     from collections import Counter
 
-    # Collect all non-trivial messages
+    # Collect all non-trivial messages, strip URLs to prevent URL
+    # fragments from being detected as canned signatures
     messages: list[str] = []
     for conv in conversations:
         for turn in conv["conversation"]:
             body = " ".join(turn["content"].split())
+            body = _URL_RE.sub("[url]", body)
             if len(body) >= min_len:
                 messages.append(body)
 
@@ -219,10 +224,7 @@ def _discover_canned_signatures(
         for i in range(0, max(1, len(body) - min_len), step):
             sub = body[i:i + min_len]
             if len(sub) >= min_len:
-                # Skip substrings containing URLs — these are survey links,
-                # not canned phrases, and stripping them breaks legitimate URLs
-                if "http" not in sub and "www." not in sub:
-                    sub_freq[sub] += 1
+                sub_freq[sub] += 1
 
     signatures = {s for s, c in sub_freq.items() if c >= min_freq}
 
@@ -237,8 +239,7 @@ def _discover_canned_signatures(
             for i in range(0, max(1, len(body) - _SHORT_CANNED_MIN_LEN), step):
                 sub = body[i:i + _SHORT_CANNED_MIN_LEN]
                 if len(sub) >= _SHORT_CANNED_MIN_LEN:
-                    if "http" not in sub and "www." not in sub:
-                        short_freq[sub] += 1
+                    short_freq[sub] += 1
 
         short_sigs = {s for s, c in short_freq.items() if c >= _SHORT_CANNED_MIN_FREQ}
         if short_sigs:
