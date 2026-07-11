@@ -43,6 +43,8 @@ def main() -> int:
     pii_safe = cfg.get("pii_safe_patterns", [])
     dedupe_exact = cfg.get("dedupe_exact", True)
     max_dup = cfg.get("max_duplicate_count", 3)
+    dedupe_sent = cfg.get("dedupe_sentences", True)
+    max_sent = cfg.get("max_sentence_count", 5)
 
     print(f"Building dataset from {input_dir}...")
     result = generate_dataset(
@@ -59,6 +61,8 @@ def main() -> int:
         pii_safe_patterns=pii_safe,
         dedupe_exact=dedupe_exact,
         max_duplicate_count=max_dup,
+        dedupe_sentences=dedupe_sent,
+        max_sentence_count=max_sent,
         min_message_length=min_msg_len,
     )
 

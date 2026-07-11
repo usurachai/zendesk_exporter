@@ -404,6 +404,8 @@ def generate_dataset(
     pii_safe_patterns: list[str] | None = None,
     dedupe_exact: bool = True,
     max_duplicate_count: int = 3,
+    dedupe_sentences: bool = True,
+    max_sentence_count: int = 5,
     min_message_length: int = 3,
 ) -> dict[str, Any]:
     """Build conversations from raw tickets and generate train/valid JSONL files.
@@ -470,6 +472,10 @@ def generate_dataset(
     # Cross-conversation exact dedup on training set only
     if dedupe_exact:
         train_convs = _dedupe_exact(train_convs, max_copies=max_duplicate_count)
+
+    # Sentence-level dedup on training set
+    if dedupe_sentences:
+        train_convs = _dedupe_sentences(train_convs, max_copies=max_sentence_count)
 
     # FR-203: Generate JSONL
     train_path = output_path / "train.jsonl"
@@ -554,3 +560,68 @@ def _dedupe_exact(
     conversations = [c for c in conversations if len(c["conversation"]) > 0]
 
     return conversations
+
+
+def _dedupe_sentences(
+    conversations: list[dict[str, Any]],
+    max_copies: int = 5,
+) -> list[dict[str, Any]]:
+    """Remove over-represented sentences across conversations.
+
+    Handles the case where the same sentence appears as part of many
+    different messages (e.g., a shared apology prefix). Sentences
+    appearing more than max_copies times are dropped from all but
+    the first max_copies occurrences.
+    """
+    from collections import Counter
+
+    # First pass: count sentence frequencies
+    sent_freq: Counter = Counter()
+    for conv in conversations:
+        for turn in conv["conversation"]:
+            for sent in _split_sentences(turn["content"]):
+                if len(sent) > 15:
+                    sent_freq[sent] += 1
+
+    # Identify over-represented sentences
+    over_limit = {s for s, c in sent_freq.items() if c > max_copies}
+    if not over_limit:
+        return conversations
+
+    logger.info("Sentence dedup: %d over-represented sentence types found", len(over_limit))
+
+    # Second pass: keep first max_copies, drop rest
+    kept: Counter = Counter()
+    dropped = 0
+
+    for conv in conversations:
+        filtered_turns = []
+        for turn in conv["conversation"]:
+            sentences = _split_sentences(turn["content"])
+            kept_sentences = []
+            for sent in sentences:
+                if sent not in over_limit:
+                    kept_sentences.append(sent)
+                elif kept[sent] < max_copies:
+                    kept[sent] += 1
+                    kept_sentences.append(sent)
+                else:
+                    dropped += 1
+            if kept_sentences:
+                turn["content"] = ". ".join(kept_sentences)
+                filtered_turns.append(turn)
+        conv["conversation"] = filtered_turns
+
+    logger.info("Sentence dedup: dropped %d sentence occurrences", dropped)
+
+    # Remove empty conversations
+    conversations = [c for c in conversations if len(c["conversation"]) > 0]
+
+    return conversations
+
+
+def _split_sentences(text: str) -> list[str]:
+    """Split text into sentences on period boundaries, preserving content."""
+    # Split on '.' followed by space or end, keep the split points clean
+    parts = text.replace("\n", " ").split(".")
+    return [p.strip() for p in parts if p.strip()]
