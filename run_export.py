@@ -52,10 +52,10 @@ def main() -> int:
         return 1
 
     print(f"\nExport completed successfully!")
-    print(f"  Tickets exported: {result['tickets_exported']}")
-    if result.get("tickets_skipped"):
-        print(f"  Skipped (past end): {result['tickets_skipped']}")
-    print(f"  Pages processed:   {result['pages']}")
+    print(f"  Tickets found:     {result.get('tickets_found', 0)}")
+    print(f"  Tickets exported:  {result['tickets_exported']}")
+    if result.get("tickets_failed"):
+        print(f"  Tickets failed:    {result['tickets_failed']}")
     print(f"  Time elapsed:      {result['elapsed_seconds']}s")
     print(f"  Output directory:  {result['output_dir']}")
     return 0
