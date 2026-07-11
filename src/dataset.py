@@ -759,6 +759,24 @@ def _dedupe_sentences(
             for slices in filter_slices
         )
 
+    def _safe_replace(body: str, phrase: str) -> str:
+        """Replace phrase in body only when at word boundaries.
+
+        Avoids mid-word garbling like "subscription" → "bscription".
+        """
+        idx = body.find(phrase)
+        if idx == -1:
+            return body
+        body_len = len(body)
+        phrase_len = len(phrase)
+        at_start = idx <= 2
+        at_end = (body_len - (idx + phrase_len)) <= 2
+        if not at_start and not at_end:
+            return body  # mid-text: don't break words
+        before = body[:idx].rstrip()
+        after = body[idx + phrase_len:].lstrip()
+        return (before + " " + after).strip()
+
     dropped = 0
 
     for conv in conversations:
@@ -766,19 +784,18 @@ def _dedupe_sentences(
         for turn in conv["conversation"]:
             sentences = _split_sentences(turn["content"])
             if len(sentences) <= 1:
-                # Single sentence: strip matched phrases, keep the message
+                # Single sentence: strip matched phrases at boundaries only
                 body = turn["content"]
                 matched = False
                 for slices, original_filter in zip(filter_slices, filter_list):
-                    if any(slice_ in body for slice_ in slices):
-                        # Try replacing full filter first; fall back to matching slices
-                        if original_filter in body:
-                            body = body.replace(original_filter, " ")
-                        else:
-                            for slice_ in slices:
-                                if slice_ in body:
-                                    body = body.replace(slice_, " ")
-                        matched = True
+                    # Try original filter first, then 35-char slices
+                    for phrase in [original_filter] + sorted(slices, key=len, reverse=True):
+                        if phrase in body:
+                            new_body = _safe_replace(body, phrase)
+                            if new_body != body:
+                                body = new_body
+                                matched = True
+                                break
                 if matched:
                     dropped += 1
                     body = " ".join(body.split()).strip()
@@ -939,9 +956,29 @@ def _dedupe_canned(
 
 
 def _remove_canned_phrase(body: str, sig: str) -> str | None:
-    """Remove a canned signature phrase from a message."""
+    """Remove a canned signature phrase from a message.
+
+    Only removes when the signature appears at the beginning or end
+    of the message (within 10 chars of either boundary). Mid-message
+    occurrences are part of natural content and should not be stripped
+    — blind replacement breaks words (e.g., "subscription" → "bscription").
+    """
     normalized = " ".join(body.split())
-    result = normalized.replace(sig, " ")
+    idx = normalized.find(sig)
+    if idx == -1:
+        return body
+
+    body_len = len(normalized)
+    sig_len = len(sig)
+
+    # Only strip if at the beginning (idx <= 10) or end (remaining < 10)
+    at_start = idx <= 10
+    at_end = (body_len - (idx + sig_len)) < 10
+
+    if not at_start and not at_end:
+        return body  # mid-message: keep intact
+
+    result = normalized[:idx] + " " + normalized[idx + sig_len:]
     result = " ".join(result.split())
     result = result.strip().rstrip(",;:!?。，；：！？")
     return result if result else None
