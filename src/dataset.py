@@ -1,10 +1,16 @@
 """Dataset Builder — converts raw Zendesk tickets into Unsloth-format conversation datasets.
 
+Supports two Zendesk data formats:
+  - Native: author_id distinguishes customer (requester_id) vs agent
+  - Sunshine Conversations: author_id=-1, names embedded in body as
+    "(HH:MM:SS) Name: message" — customer name extracted from private
+    "Conversation with <Name>" comment.
+
 Functional Requirements:
-  FR-101: Identify customer using requester_id
-  FR-102: Identify agent using author_id
-  FR-103: Merge consecutive messages
-  FR-104: Remove private notes
+  FR-101: Identify customer using requester_id (native) or name matching (Sunshine)
+  FR-102: Identify agent using author_id (native) or non-customer name (Sunshine)
+  FR-103: Merge consecutive messages from the same speaker
+  FR-104: Remove private notes (keep only for name extraction)
   FR-105: Remove empty messages
   FR-106: Preserve conversation order
   FR-107: Generate conversation statistics
@@ -18,6 +24,7 @@ Functional Requirements:
 
 import json
 import random
+import re
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +32,62 @@ from src.common.config import get_dataset_config
 from src.common.logger import get_logger
 
 logger = get_logger(__name__)
+
+# ---------------------------------------------------------------
+# Sunshine Conversations helpers
+# ---------------------------------------------------------------
+
+# Matches "(HH:MM:SS) Name: " or "(HH:MM:SS) Name uploaded: " at start of body
+_SUNSHINE_AUTHOR_RE = re.compile(
+    r"^\(\d{2}:\d{2}:\d{2}\)\s+(.+?)(?:\suploaded)?:\s+"
+)
+
+# Matches private comment "Conversation with <Name>"
+_CONVERSATION_WITH_RE = re.compile(r"^Conversation\s+with\s+(.+)", re.IGNORECASE)
+
+
+def _extract_customer_name(comments: list[dict[str, Any]]) -> str | None:
+    """Extract customer name from Sunshine Conversations private comment.
+
+    Scans private comments for "Conversation with <Name>".
+    """
+    for c in comments:
+        if not c.get("public", True):
+            m = _CONVERSATION_WITH_RE.match(c.get("body", "").strip())
+            if m:
+                return m.group(1).strip()
+    return None
+
+
+def _parse_sunshine_author(body: str) -> str | None:
+    """Extract speaker name from Sunshine Conversations body prefix.
+
+    Returns the name (e.g. "Nattaya Suwannaroj") or None if unparseable.
+    """
+    m = _SUNSHINE_AUTHOR_RE.match(body.strip())
+    if m:
+        return m.group(1).strip()
+    return None
+
+
+def _strip_sunshine_prefix(body: str) -> str:
+    """Remove the first Sunshine Conversations timestamp+name prefix.
+
+    Keeps subsequent timestamps intact (same-speaker rapid-fire messages).
+    """
+    return _SUNSHINE_AUTHOR_RE.sub("", body.strip(), count=1).strip()
+
+
+def _is_sunshine_format(comments: list[dict[str, Any]]) -> bool:
+    """Detect if this ticket uses the Sunshine Conversations format.
+
+    True if any public comment has author_id=-1 and body matches the pattern.
+    """
+    for c in comments:
+        if c.get("public", True) and c.get("author_id") == -1:
+            if _SUNSHINE_AUTHOR_RE.match(c.get("body", "").strip()):
+                return True
+    return False
 
 
 # ---------------------------------------------------------------
@@ -42,23 +105,51 @@ def _is_non_empty(comment: dict[str, Any]) -> bool:
     return bool(comment.get("body", "").strip())
 
 
+def _classify_sunshine(
+    body: str,
+    customer_name: str,
+) -> tuple[str, str]:
+    """Classify a Sunshine Conversations message as customer or agent.
+
+    Returns (role, cleaned_body).
+    """
+    author = _parse_sunshine_author(body)
+    cleaned = _strip_sunshine_prefix(body)
+
+    if author and author.lower() == customer_name.lower():
+        return "customer", cleaned
+    else:
+        return "agent", cleaned
+
+
 def build_conversation(ticket: dict[str, Any]) -> dict[str, Any] | None:
     """Convert a single raw ticket JSON into a conversation object.
+
+    Handles both native Zendesk format and Sunshine Conversations format.
 
     Returns None if the ticket has no usable public comments.
     """
     ticket_id = ticket.get("ticket_id") or ticket.get("id")
     requester_id = ticket.get("metadata", {}).get("requester_id")
-
-    if requester_id is None:
-        logger.warning("Ticket %s: missing requester_id, skipping", ticket_id)
-        return None
-
     comments = ticket.get("comments", [])
 
-    # FR-106: comments already sorted by created_at in exporter
-    # FR-104: Remove private notes
-    # FR-105: Remove empty messages
+    if not comments:
+        return None
+
+    # Detect format
+    sunshine = _is_sunshine_format(comments)
+    customer_name: str | None = None
+
+    if sunshine:
+        customer_name = _extract_customer_name(comments)
+        if not customer_name:
+            logger.warning(
+                "Ticket %s: Sunshine format detected but no 'Conversation with' "
+                "private comment found. Falling back to requester_id.",
+                ticket_id,
+            )
+
+    # Filter public, non-empty — FR-104, FR-105
     filtered = [
         c for c in comments if _is_public(c) and _is_non_empty(c)
     ]
@@ -67,18 +158,22 @@ def build_conversation(ticket: dict[str, Any]) -> dict[str, Any] | None:
         logger.debug("Ticket %s: no usable public comments", ticket_id)
         return None
 
-    # FR-103: Merge consecutive messages from the same author
+    # Build turns — FR-103 (merge consecutive same-role), FR-106 (order)
     merged: list[dict[str, Any]] = []
     for comment in filtered:
-        author_id = comment.get("author_id")
         body = comment["body"].strip()
+        author_id = comment.get("author_id")
 
-        # FR-101: Identify customer using requester_id
-        # FR-102: Identify agent using author_id (!= requester_id)
-        role = "customer" if author_id == requester_id else "agent"
+        if sunshine and customer_name:
+            role, body = _classify_sunshine(body, customer_name)
+        else:
+            # Native format: FR-101, FR-102
+            role = "customer" if author_id == requester_id else "agent"
+
+        if not body:
+            continue  # FR-105: skip after strip
 
         if merged and merged[-1]["role"] == role:
-            # Merge consecutive same-role messages
             merged[-1]["content"] += "\n" + body
             merged[-1]["comment_ids"].append(comment["id"])
         else:
