@@ -720,27 +720,58 @@ def _dedupe_canned(
     conversations: list[dict[str, Any]],
     max_copies: int = 3,
 ) -> list[dict[str, Any]]:
-    """Limit canned/template messages across the entire dataset.
+    """Limit canned/template messages per-signature across the dataset.
 
     Dynamically discovers canned signatures via frequency analysis,
-    then keeps at most max_copies messages containing each signature.
+    then keeps at most max_copies messages per signature.
+    Only drops messages where the canned signature dominates
+    (covers >= 60% of the message), preserving specific support
+    responses that happen to share common phrases.
     """
+    from collections import Counter
+
     # Phase 1: discover canned signatures dynamically
     signatures = _discover_canned_signatures(conversations)
 
     if not signatures:
         return conversations
 
-    # Phase 2: keep only max_copies messages per signature
+    # Sort signatures by length (longest first) for best match
+    sorted_sigs = sorted(signatures, key=len, reverse=True)
+
+    def _canned_fraction(body: str) -> float:
+        """What fraction of the message does the best canned signature cover?"""
+        normalized = " ".join(body.split())
+        body_len = len(normalized)
+        if body_len < 40:
+            return 0.0
+        best = 0.0
+        for sig in sorted_sigs:
+            if sig in normalized:
+                fraction = len(sig) / body_len
+                if fraction > best:
+                    best = fraction
+                if best >= 1.0:
+                    break
+        return best
+
+    # Phase 2: keep at most max_copies per signature
+    kept_per_sig: Counter = Counter()
     dropped = 0
-    kept_count = 0
+    kept = 0
 
     for conv in conversations:
         filtered_turns = []
         for turn in conv["conversation"]:
-            if _contains_canned(turn["content"], signatures):
-                if kept_count < max_copies:
-                    kept_count += 1
+            body = turn["content"]
+            fraction = _canned_fraction(body)
+
+            # Only treat as canned if the signature covers >=60% of the message
+            if fraction >= 0.6:
+                matching_sig = _longest_matching_sig(body, sorted_sigs)
+                if matching_sig and kept_per_sig[matching_sig] < max_copies:
+                    kept_per_sig[matching_sig] += 1
+                    kept += 1
                     filtered_turns.append(turn)
                 else:
                     dropped += 1
@@ -748,6 +779,15 @@ def _dedupe_canned(
                 filtered_turns.append(turn)
         conv["conversation"] = filtered_turns
 
-    logger.info("Canned dedup: kept %d, dropped %d canned messages", kept_count, dropped)
+    logger.info("Canned dedup: kept %d, dropped %d canned messages", kept, dropped)
     conversations = [c for c in conversations if len(c["conversation"]) > 0]
     return conversations
+
+
+def _longest_matching_sig(body: str, sorted_sigs: list[str]) -> str | None:
+    """Return the longest canned signature found in body, or None."""
+    normalized = " ".join(body.split())
+    for sig in sorted_sigs:
+        if sig in normalized:
+            return sig
+    return None
