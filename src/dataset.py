@@ -695,16 +695,31 @@ def _dedupe_sentences(
     """Remove over-represented sentences from conversations.
 
     Uses an explicit filter list (set in config.yaml after analysis).
-    Only strips sentences from multi-sentence messages; single-sentence
-    messages are left intact to preserve conversation flow.
+    Matches any 35-character slice of each filter phrase to handle
+    minor wording variants of the same template.
 
-    Args:
-        conversations: List of conversation dicts.
-        filter_list: Set of exact sentence strings to remove.
-                     If None or empty, returns conversations unchanged.
+    Only drops sentences from multi-sentence messages; single-sentence
+    messages get the template phrase stripped (not dropped).
     """
     if not filter_list:
         return conversations
+
+    # Pre-compute 35-char slices for flexible matching
+    filter_slices: list[set[str]] = []
+    for f in filter_list:
+        slices = {f[i:i + 35] for i in range(0, max(1, len(f) - 35))}
+        if slices:
+            filter_slices.append(slices)
+
+    if not filter_slices:
+        return conversations
+
+    def _matches_filter(text: str) -> bool:
+        """Check if text contains any slice of any filter phrase."""
+        return any(
+            any(slice_ in text for slice_ in slices)
+            for slices in filter_slices
+        )
 
     dropped = 0
 
@@ -713,11 +728,22 @@ def _dedupe_sentences(
         for turn in conv["conversation"]:
             sentences = _split_sentences(turn["content"])
             if len(sentences) <= 1:
-                # Single sentence: never strip (preserves conversation flow)
-                filtered_turns.append(turn)
+                # Single sentence: strip matched phrases, keep the message
+                body = turn["content"]
+                matched = False
+                for slices, original_filter in zip(filter_slices, filter_list):
+                    if any(slice_ in body for slice_ in slices):
+                        body = body.replace(original_filter, " ")
+                        matched = True
+                if matched:
+                    dropped += 1
+                    body = " ".join(body.split()).strip()
+                if body:
+                    turn["content"] = body
+                    filtered_turns.append(turn)
                 continue
 
-            kept_sentences = [s for s in sentences if s not in filter_list]
+            kept_sentences = [s for s in sentences if not _matches_filter(s)]
             if kept_sentences:
                 dropped += len(sentences) - len(kept_sentences)
                 turn["content"] = ". ".join(kept_sentences)
