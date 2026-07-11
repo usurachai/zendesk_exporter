@@ -76,14 +76,20 @@ Override defaults in `config/config.yaml` as needed (date ranges, channel ID, ag
 # Step 1 — Export tickets (requires --start-date)
 uv run python run_export.py --start-date 2026-06-01 --end-date 2026-06-30
 
-# Step 2 — Build dataset
+# Step 2 — Analyze sentence frequencies & discover filter candidates
+uv run python run_prepare.py --analyze
+
+# Step 3 — Build dataset (after configuring filter_sentences)
 uv run python run_prepare.py
 
-# Step 3 — Fine-tune
+# Step 4 — Fine-tune
 uv run python run_train.py
 
-# Step 4 — Test interactively
+# Step 5 — Test interactively
 uv run python run_test.py
+
+# Run tests
+uv run python -m pytest tests/ -v
 ```
 
 Or activate the venv and run directly:
@@ -122,6 +128,9 @@ zendesk_exporter/
 ├── run_prepare.py           # Entry point: dataset
 ├── run_train.py             # Entry point: train
 ├── run_test.py              # Entry point: test
+├── tests/
+│   ├── fixtures.py           # Sample Zendesk tickets for testing
+│   └── test_dataset.py       # 24 tests for dataset preparation
 ├── .env.example             # Required secrets template
 ├── requirements.txt         # Core deps (export + dataset)
 ├── requirements-train.txt   # Optional ML deps (training + inference)
@@ -155,13 +164,14 @@ Converts raw tickets into Unsloth-format conversation data with quality cleanup.
 
 **Quality cleanup** (all configurable toggles):
 - Strips attachment metadata (`.jpeg\nURL:...\nType:...\nSize:...` → `[image]`)
-- Replaces raw URLs with `[link]` placeholder
+- Replaces raw URLs with `[link]` placeholder (URLs protected from downstream processing when `clean_urls: false`)
 - Redacts PII: phone numbers → `[phone]`, emails → `[email]` (safe patterns preserved)
-- Deduplicates canned closing messages within conversations
 - Strips trailing Thai filler particles (ครับ/ค่ะ/ฮะ/นะครับ/etc) — preserves mid-sentence
 - Drops messages that are nothing but filler words ("ครับ", "ๆ", etc.)
-- Dynamic canned detection: discovers template signatures via substring frequency analysis
-- Cross-conversation canned dedup: keeps max N copies of any canned message
+- **Dynamic canned detection**: discovers template signatures via substring frequency analysis, no hardcoded patterns
+- **Per-signature canned dedup**: keeps max N copies per template (not globally)
+- **Canned suffix stripping**: removes repeated closing templates from end of messages, keeps unique prefix
+- **Sentence filtering** (config-driven): `--analyze` mode discovers over-represented sentences, user curates filter list in config
 - Drops messages shorter than `min_message_length` (default: 3 chars)
 
 **Standard pipeline:**
@@ -223,13 +233,27 @@ All tunable parameters in `config/config.yaml`. Secrets go in `.env` (never comm
 | `dedupe_exact` | `true` | Cross-conversation exact duplicate removal |
 | `max_duplicate_count` | `3` | Keep max N copies of identical messages |
 | `dedupe_sentences` | `true` | Sentence-level dedup across conversations |
-| `max_sentence_count` | `5` | Drop sentences appearing more than N times |
+| `filter_sentences` | `[]` | Exact sentences or phrase substrings to filter (see `--analyze`) |
 | `clean_fillers` | `true` | Strip trailing filler particles (ครับ/ค่ะ/ฮะ/etc) |
 | `drop_filler_only` | `true` | Drop messages that are nothing but filler words |
 | `redact_pii` | `true` | Redact phone numbers and email addresses |
 | `pii_safe_patterns` | `["support@..."]` | Patterns exempt from redaction |
 | `min_message_length` | `3` | Skip messages shorter than N chars |
 | `system_prompt` | *(Thai support agent)* | Injected into every sample |
+
+**Sentence filtering workflow:**
+```bash
+# 1. Analyze sentence frequencies to discover candidates
+uv run python run_prepare.py --analyze
+
+# 2. Add chosen sentences to filter_sentences in config.yaml:
+#    filter_sentences:
+#      - "หากพี่มนุษย์ต้องการสอบถามข้อมูลเพิ่มเติม..."
+#      - "ทุกความคิดเห็นของพี่มนุษย์สำคัญต่อเรา..."
+
+# 3. Run prepare — chosen sentences are filtered
+uv run python run_prepare.py
+```
 
 ### Training
 
