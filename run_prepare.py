@@ -45,6 +45,8 @@ def main() -> int:
     max_dup = cfg.get("max_duplicate_count", 3)
     dedupe_sent = cfg.get("dedupe_sentences", True)
     max_sent = cfg.get("max_sentence_count", 5)
+    clean_fillers = cfg.get("clean_fillers", True)
+    drop_filler_only = cfg.get("drop_filler_only", True)
 
     print(f"Building dataset from {input_dir}...")
     result = generate_dataset(
@@ -63,6 +65,8 @@ def main() -> int:
         max_duplicate_count=max_dup,
         dedupe_sentences=dedupe_sent,
         max_sentence_count=max_sent,
+        clean_fillers=clean_fillers,
+        drop_filler_only=drop_filler_only,
         min_message_length=min_msg_len,
     )
 

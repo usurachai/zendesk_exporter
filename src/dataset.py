@@ -141,6 +141,45 @@ _URL_RE = re.compile(r"https?://\S+")
 _CANNED_MIN_LEN = 40   # minimum substring length to consider
 _CANNED_MIN_FREQ = 5   # minimum occurrences to flag as canned
 
+# Thai filler/particle words
+_TRAILING_FILLERS = [
+    "ครับ", "ครับผม", "คับ", "คะ", "ค่ะ", "ค้า",
+    "นะครับ", "นะคะ", "นะฮะ", "นะ", "นะจ๊ะ",
+    "ฮะ", "ฮ่ะ", "จ้า", "จร้า", "เด้อ", "เลย",
+    "อ่ะ", "อะ", "น่ะ", "คะน้า", "ค่า", "คร้าบ",
+]
+
+# Build trailing-filler regex from safe escaped words
+_ESCAPED_FILLERS = "|".join(re.escape(w) for w in sorted(_TRAILING_FILLERS, key=len, reverse=True))
+_TRAILING_FILLERS_RE = re.compile(
+    rf"\s*(?:{_ESCAPED_FILLERS})\s*$",
+    re.IGNORECASE,
+)
+
+
+def _is_filler_only(body: str) -> bool:
+    """Return True if the message is nothing but filler words/repetitions."""
+    body = body.strip().lower()
+    # Remove all known filler words and whitespace
+    remaining = body
+    for w in sorted(_TRAILING_FILLERS, key=len, reverse=True):
+        remaining = remaining.replace(w.lower(), " ")
+    # Also remove repetitions like ๆๆ
+    remaining = remaining.replace("ๆ", " ")
+    remaining = remaining.strip()
+    return remaining == ""
+
+
+def _clean_fillers(body: str) -> str | None:
+    """Strip trailing filler particles from a message.
+
+    Returns None if the message becomes empty after cleaning.
+    """
+    cleaned = _TRAILING_FILLERS_RE.sub("", body).strip()
+    if not cleaned:
+        return None
+    return cleaned
+
 # PII patterns for redaction
 _PHONE_RE = re.compile(r"0\d{1,2}[-\s]?\d{3}[-\s]?\d{4}")
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.\w+")
@@ -221,6 +260,7 @@ def _clean_message(
     clean_attachments: bool = True,
     clean_urls: bool = True,
     redact_pii: bool = True,
+    clean_fillers: bool = True,
     pii_safe_patterns: list[str] | None = None,
 ) -> str | None:
     """Clean a message body for training quality.
@@ -244,6 +284,11 @@ def _clean_message(
 
     if redact_pii:
         body = _redact_pii(body, safe_patterns=pii_safe_patterns)
+
+    if clean_fillers:
+        body = _clean_fillers(body)
+        if body is None:
+            return None  # dropped — became empty after filler strip
 
     return body.strip()
 
@@ -286,6 +331,8 @@ def build_conversation(
     clean_attachments: bool = True,
     clean_urls: bool = True,
     redact_pii: bool = True,
+    clean_fillers: bool = True,
+    drop_filler_only: bool = True,
     pii_safe_patterns: list[str] | None = None,
     min_length: int = 3,
 ) -> dict[str, Any] | None:
@@ -346,11 +393,15 @@ def build_conversation(
                 clean_attachments=clean_attachments,
                 clean_urls=clean_urls,
                 redact_pii=redact_pii,
+                clean_fillers=clean_fillers,
                 pii_safe_patterns=pii_safe_patterns,
             )
 
             if not clean_body:
                 continue  # dropped by cleanup
+
+            if drop_filler_only and _is_filler_only(clean_body):
+                continue  # noise: "ครับ", "ฮะ", "โอเคค่ะ" etc.
 
             if len(clean_body) < min_length:
                 continue  # FR-105: too short
@@ -432,6 +483,8 @@ def generate_dataset(
     clean_urls: bool = True,
     dedupe_canned: bool = True,
     redact_pii: bool = True,
+    clean_fillers: bool = True,
+    drop_filler_only: bool = True,
     pii_safe_patterns: list[str] | None = None,
     dedupe_exact: bool = True,
     max_duplicate_count: int = 3,
@@ -475,6 +528,8 @@ def generate_dataset(
             clean_attachments=clean_attachments,
             clean_urls=clean_urls,
             redact_pii=redact_pii,
+            clean_fillers=clean_fillers,
+            drop_filler_only=drop_filler_only,
             pii_safe_patterns=pii_safe_patterns,
             min_length=min_message_length,
         )
