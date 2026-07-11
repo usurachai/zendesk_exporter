@@ -134,7 +134,6 @@ _ATTACHMENT_META_RE = re.compile(
     r"Size:\s*\d+"
 )
 
-# Matches a standalone full URL (http/https)
 _URL_RE = re.compile(r"https?://\S+")
 
 # Canned message detection — dynamic via frequency analysis (no hardcoded patterns)
@@ -143,9 +142,6 @@ _CANNED_MIN_FREQ = 5   # minimum occurrences for primary detection
 # Second-pass: short phrases that appear extremely often (>50x) are likely templates
 _SHORT_CANNED_MIN_LEN = 15
 _SHORT_CANNED_MIN_FREQ = 30
-
-# URL replacer for canned detection (prevents URL fragments from being detected)
-_URL_RE = re.compile(r"https?://\S+")
 
 # Thai filler/particle words
 _TRAILING_FILLERS = [
@@ -738,7 +734,13 @@ def _dedupe_sentences(
                 matched = False
                 for slices, original_filter in zip(filter_slices, filter_list):
                     if any(slice_ in body for slice_ in slices):
-                        body = body.replace(original_filter, " ")
+                        # Try replacing full filter first; fall back to matching slices
+                        if original_filter in body:
+                            body = body.replace(original_filter, " ")
+                        else:
+                            for slice_ in slices:
+                                if slice_ in body:
+                                    body = body.replace(slice_, " ")
                         matched = True
                 if matched:
                     dropped += 1
@@ -801,7 +803,14 @@ def _split_sentences(text: str) -> list[str]:
         nonlocal counter
         key = f'__URL_{counter}__'
         counter += 1
-        placeholders[key] = m.group(0)
+        url = m.group(0)
+        # If URL ends with punctuation and next char is whitespace,
+        # split the punctuation out — it's a sentence delimiter
+        end = m.end()
+        while url and url[-1] in '.,;:!?)]' and (end >= len(text) or text[end:end+1] in (' ', '\n', '')):
+            url = url[:-1]
+            end -= 1
+        placeholders[key] = url
         return key
 
     text = url_pattern.sub(_protect, text)
