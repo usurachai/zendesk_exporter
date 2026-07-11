@@ -137,21 +137,63 @@ _ATTACHMENT_META_RE = re.compile(
 # Matches a standalone full URL (http/https)
 _URL_RE = re.compile(r"https?://\S+")
 
-# Canned closing message pattern
-_CANNED_PATTERNS = [
-    "หากพี่มนุษย์ต้องการสอบถามข้อมูลเพิ่มเติม",
-    "สามารถฝากข้อความไว้ได้ตลอดเวลา",
-]
+# Canned message detection — dynamic via frequency analysis (no hardcoded patterns)
+_CANNED_MIN_LEN = 40   # minimum substring length to consider
+_CANNED_MIN_FREQ = 5   # minimum occurrences to flag as canned
 
 # PII patterns for redaction
 _PHONE_RE = re.compile(r"0\d{1,2}[-\s]?\d{3}[-\s]?\d{4}")
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.\w+")
 
 
-def _is_canned(body: str) -> bool:
-    """Return True if the message matches a known canned/closing template."""
-    for pattern in _CANNED_PATTERNS:
-        if pattern in body:
+def _discover_canned_signatures(
+    conversations: list[dict[str, Any]],
+    min_len: int = _CANNED_MIN_LEN,
+    min_freq: int = _CANNED_MIN_FREQ,
+) -> set[str]:
+    """Dynamically discover canned/template signatures from the dataset.
+
+    Finds long substrings that appear in many different messages across
+    the dataset — these are likely canned responses (apology templates,
+    closing messages, etc.). No hardcoded patterns needed.
+    """
+    from collections import Counter
+
+    # Collect all non-trivial messages
+    messages: list[str] = []
+    for conv in conversations:
+        for turn in conv["conversation"]:
+            body = " ".join(turn["content"].split())
+            if len(body) >= min_len:
+                messages.append(body)
+
+    if len(messages) < min_freq:
+        return set()
+
+    # Sample substrings for performance (every Nth position)
+    sub_freq: Counter = Counter()
+    for body in messages:
+        step = max(1, len(body) // 30)
+        for i in range(0, max(1, len(body) - min_len), step):
+            sub = body[i:i + min_len]
+            if len(sub) >= min_len:
+                sub_freq[sub] += 1
+
+    signatures = {s for s, c in sub_freq.items() if c >= min_freq}
+
+    if signatures:
+        logger.info(
+            "Dynamic canned detection: %d signatures (min_len=%d, min_freq=%d)",
+            len(signatures), min_len, min_freq,
+        )
+    return signatures
+
+
+def _contains_canned(body: str, signatures: set[str]) -> bool:
+    """Check if a message contains any canned signature substring."""
+    normalized = " ".join(body.split())
+    for sig in signatures:
+        if sig in normalized:
             return True
     return False
 
@@ -625,17 +667,23 @@ def _dedupe_canned(
 ) -> list[dict[str, Any]]:
     """Limit canned/template messages across the entire dataset.
 
-    Messages matching known canned patterns are kept at most max_copies
-    times total. This prevents model bias from repeated closing templates
-    that appear with slight variations.
+    Dynamically discovers canned signatures via frequency analysis,
+    then keeps at most max_copies messages containing each signature.
     """
+    # Phase 1: discover canned signatures dynamically
+    signatures = _discover_canned_signatures(conversations)
+
+    if not signatures:
+        return conversations
+
+    # Phase 2: keep only max_copies messages per signature
     dropped = 0
     kept_count = 0
 
     for conv in conversations:
         filtered_turns = []
         for turn in conv["conversation"]:
-            if _is_canned(turn["content"]):
+            if _contains_canned(turn["content"], signatures):
                 if kept_count < max_copies:
                     kept_count += 1
                     filtered_turns.append(turn)
