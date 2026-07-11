@@ -31,16 +31,22 @@ Zendesk Incremental Export API
 ### Prerequisites
 
 - Python 3.11+
+- [uv](https://docs.astral.sh/uv/) (Python package & project manager)
 - CUDA-capable GPU (for training/inference)
 - Zendesk account with API access
 
 ### 1. Install
 
 ```bash
-git clone git@github.com:YOUR_USER/zendesk_exporter.git
+git clone git@github.com:usurachai/zendesk_exporter.git
 cd zendesk_exporter
-pip install -r requirements.txt
+
+# Create virtual environment and install dependencies
+uv venv
+uv pip install -r requirements.txt
 ```
+
+> **Note:** `uv` manages the virtual environment automatically. All `uv run` commands below execute inside `.venv` — no manual activation needed.
 
 ### 2. Configure
 
@@ -62,15 +68,27 @@ Override defaults in `config/config.yaml` as needed (ratios, model name, LoRA pa
 
 ```bash
 # Step 1 — Export tickets
-python run_export.py
+uv run python run_export.py
 
 # Step 2 — Build dataset
-python run_prepare.py
+uv run python run_prepare.py
 
 # Step 3 — Fine-tune
-python run_train.py
+uv run python run_train.py
 
 # Step 4 — Test interactively
+uv run python run_test.py
+```
+
+Or activate the venv and run directly:
+
+```bash
+source .venv/bin/activate   # Linux/macOS
+.venv\Scripts\activate      # Windows
+
+python run_export.py
+python run_prepare.py
+python run_train.py
 python run_test.py
 ```
 
