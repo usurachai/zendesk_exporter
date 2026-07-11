@@ -39,6 +39,8 @@ def main() -> int:
     clean_urls = cfg.get("clean_urls", True)
     dedupe_canned = cfg.get("dedupe_canned", True)
     min_msg_len = cfg.get("min_message_length", 3)
+    redact_pii = cfg.get("redact_pii", True)
+    pii_safe = cfg.get("pii_safe_patterns", [])
 
     print(f"Building dataset from {input_dir}...")
     result = generate_dataset(
@@ -51,6 +53,8 @@ def main() -> int:
         clean_attachments=clean_attachments,
         clean_urls=clean_urls,
         dedupe_canned=dedupe_canned,
+        redact_pii=redact_pii,
+        pii_safe_patterns=pii_safe,
         min_message_length=min_msg_len,
     )
 

@@ -143,6 +143,10 @@ _CANNED_PATTERNS = [
     "สามารถฝากข้อความไว้ได้ตลอดเวลา",
 ]
 
+# PII patterns for redaction
+_PHONE_RE = re.compile(r"0\d{1,2}[-\s]?\d{3}[-\s]?\d{4}")
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.\w+")
+
 
 def _is_canned(body: str) -> bool:
     """Return True if the message matches a known canned/closing template."""
@@ -152,11 +156,31 @@ def _is_canned(body: str) -> bool:
     return False
 
 
+def _redact_pii(body: str, safe_patterns: list[str] | None = None) -> str:
+    """Redact phone numbers and email addresses from message body.
+
+    Safe patterns (e.g. company support email) are preserved.
+    """
+    safe = set(safe_patterns or [])
+
+    def _replace_email(m: re.Match) -> str:
+        if m.group(0) in safe:
+            return m.group(0)
+        return "[email]"
+
+    body = _EMAIL_RE.sub(_replace_email, body)
+    body = _PHONE_RE.sub("[phone]", body)
+
+    return body
+
+
 def _clean_message(
     body: str,
     clean_attachments: bool = True,
     clean_urls: bool = True,
     dedupe_canned: bool = True,
+    redact_pii: bool = True,
+    pii_safe_patterns: list[str] | None = None,
     canned_seen: set[str] | None = None,
 ) -> str | None:
     """Clean a message body for training quality.
@@ -177,6 +201,9 @@ def _clean_message(
     # Remove repeated [image] [link] noise
     body = re.sub(r"^\[image\]\s*", "", body)
     body = re.sub(r"^\[link\]\s*", "", body)
+
+    if redact_pii:
+        body = _redact_pii(body, safe_patterns=pii_safe_patterns)
 
     if dedupe_canned and canned_seen is not None and _is_canned(body):
         if body in canned_seen:
@@ -224,6 +251,8 @@ def build_conversation(
     clean_attachments: bool = True,
     clean_urls: bool = True,
     dedupe_canned: bool = True,
+    redact_pii: bool = True,
+    pii_safe_patterns: list[str] | None = None,
     min_length: int = 3,
 ) -> dict[str, Any] | None:
     """Convert a single raw ticket JSON into a conversation object.
@@ -284,6 +313,8 @@ def build_conversation(
                 clean_attachments=clean_attachments,
                 clean_urls=clean_urls,
                 dedupe_canned=dedupe_canned,
+                redact_pii=redact_pii,
+                pii_safe_patterns=pii_safe_patterns,
                 canned_seen=canned_seen,
             )
 
@@ -369,6 +400,8 @@ def generate_dataset(
     clean_attachments: bool = True,
     clean_urls: bool = True,
     dedupe_canned: bool = True,
+    redact_pii: bool = True,
+    pii_safe_patterns: list[str] | None = None,
     min_message_length: int = 3,
 ) -> dict[str, Any]:
     """Build conversations from raw tickets and generate train/valid JSONL files.
@@ -407,6 +440,8 @@ def generate_dataset(
             clean_attachments=clean_attachments,
             clean_urls=clean_urls,
             dedupe_canned=dedupe_canned,
+            redact_pii=redact_pii,
+            pii_safe_patterns=pii_safe_patterns,
             min_length=min_message_length,
         )
         if conv:

@@ -26,6 +26,9 @@ dataset:
   clean_urls: true          # replace long URLs with [link]
   dedupe_canned: true       # remove repeated canned closing messages
   min_message_length: 3     # skip messages shorter than N chars
+  redact_pii: true          # redact phone numbers and emails
+  pii_safe_patterns:        # patterns to keep (not redacted)
+    - "support@meowjot.com"
   system_prompt: |
     You are a helpful, polite customer support agent for a Thai company.
     Follow the company's support SOP. Ask for missing information before
