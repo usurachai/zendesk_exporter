@@ -178,10 +178,8 @@ def _clean_message(
     body: str,
     clean_attachments: bool = True,
     clean_urls: bool = True,
-    dedupe_canned: bool = True,
     redact_pii: bool = True,
     pii_safe_patterns: list[str] | None = None,
-    canned_seen: set[str] | None = None,
 ) -> str | None:
     """Clean a message body for training quality.
 
@@ -204,11 +202,6 @@ def _clean_message(
 
     if redact_pii:
         body = _redact_pii(body, safe_patterns=pii_safe_patterns)
-
-    if dedupe_canned and canned_seen is not None and _is_canned(body):
-        if body in canned_seen:
-            return None  # drop duplicate canned message
-        canned_seen.add(body)
 
     return body.strip()
 
@@ -250,7 +243,6 @@ def build_conversation(
     agent_names: set[str] | None = None,
     clean_attachments: bool = True,
     clean_urls: bool = True,
-    dedupe_canned: bool = True,
     redact_pii: bool = True,
     pii_safe_patterns: list[str] | None = None,
     min_length: int = 3,
@@ -292,7 +284,6 @@ def build_conversation(
 
     # Build turns — FR-103 (merge consecutive same-role), FR-106 (order)
     merged: list[dict[str, Any]] = []
-    canned_seen: set[str] = set()
 
     for comment in filtered:
         body = comment["body"].strip()
@@ -312,10 +303,8 @@ def build_conversation(
                 clean_body,
                 clean_attachments=clean_attachments,
                 clean_urls=clean_urls,
-                dedupe_canned=dedupe_canned,
                 redact_pii=redact_pii,
                 pii_safe_patterns=pii_safe_patterns,
-                canned_seen=canned_seen,
             )
 
             if not clean_body:
@@ -443,7 +432,6 @@ def generate_dataset(
             agent_names=set(agent_names or []),
             clean_attachments=clean_attachments,
             clean_urls=clean_urls,
-            dedupe_canned=dedupe_canned,
             redact_pii=redact_pii,
             pii_safe_patterns=pii_safe_patterns,
             min_length=min_message_length,
@@ -476,6 +464,10 @@ def generate_dataset(
     # Sentence-level dedup on training set
     if dedupe_sentences:
         train_convs = _dedupe_sentences(train_convs, max_copies=max_sentence_count)
+
+    # Cross-conversation canned message dedup
+    if dedupe_canned:
+        train_convs = _dedupe_canned(train_convs, max_copies=max_duplicate_count)
 
     # FR-203: Generate JSONL
     train_path = output_path / "train.jsonl"
@@ -625,3 +617,34 @@ def _split_sentences(text: str) -> list[str]:
     # Split on '.' followed by space or end, keep the split points clean
     parts = text.replace("\n", " ").split(".")
     return [p.strip() for p in parts if p.strip()]
+
+
+def _dedupe_canned(
+    conversations: list[dict[str, Any]],
+    max_copies: int = 3,
+) -> list[dict[str, Any]]:
+    """Limit canned/template messages across the entire dataset.
+
+    Messages matching known canned patterns are kept at most max_copies
+    times total. This prevents model bias from repeated closing templates
+    that appear with slight variations.
+    """
+    dropped = 0
+    kept_count = 0
+
+    for conv in conversations:
+        filtered_turns = []
+        for turn in conv["conversation"]:
+            if _is_canned(turn["content"]):
+                if kept_count < max_copies:
+                    kept_count += 1
+                    filtered_turns.append(turn)
+                else:
+                    dropped += 1
+            else:
+                filtered_turns.append(turn)
+        conv["conversation"] = filtered_turns
+
+    logger.info("Canned dedup: kept %d, dropped %d canned messages", kept_count, dropped)
+    conversations = [c for c in conversations if len(c["conversation"]) > 0]
+    return conversations
