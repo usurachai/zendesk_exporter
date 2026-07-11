@@ -100,19 +100,20 @@ def _save_checkpoint(checkpoint_path: Path, data: dict[str, Any]) -> None:
 def _search_tickets(
     session: requests.Session,
     cfg: dict[str, Any],
-    start_time: int,
-    end_time: int | None,
+    start_date: str,
+    end_date: str | None,
+    channel_id: str,
     per_page: int = 100,
 ) -> list[dict[str, Any]]:
-    """Use Zendesk Search API to find Facebook Messenger tickets in a date range.
+    """Use Zendesk Search API to find tickets by channel and date range.
 
     Much faster than Incremental API for date-range exports (100 tickets/page).
     """
-    # Build search query: Facebook Messenger tickets in date range
-    query_parts = ["type:ticket", "channel:facebook_messenger"]
-    query_parts.append(f"created>={start_time}")
-    if end_time:
-        query_parts.append(f"created<={end_time}")
+    # Build search query with ISO date strings (not Unix timestamps)
+    query_parts = ["type:ticket", f"via:{channel_id}"]
+    query_parts.append(f"created>={start_date}")
+    if end_date:
+        query_parts.append(f"created<={end_date}")
 
     query = " ".join(query_parts)
     url = _api_url(cfg, "/search.json")
@@ -296,6 +297,7 @@ def run_export(
 
     start_time = _parse_date(start_date)
     end_time = _parse_date(end_date)
+    channel_id = cfg.get("channel_id", "sunshine_conversations_facebook_messenger")
 
     output_dir = Path(cfg.get("output_dir", "data/raw"))
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -303,7 +305,7 @@ def run_export(
     checkpoint_path = Path(cfg.get("checkpoint_file", "data/export_cursor.json"))
     concurrency = cfg.get("comment_concurrency", 5)
 
-    logger.info("Export: %s → %s", start_date, end_date or "now")
+    logger.info("Export: %s → %s | channel: %s", start_date, end_date or "now", channel_id)
 
     # ----- Phase 1: Search for tickets -----
     session = _build_session(
@@ -311,11 +313,11 @@ def run_export(
         backoff_base=cfg.get("retry_backoff_base", 2),
     )
 
-    logger.info("Phase 1: Searching for Facebook Messenger tickets...")
+    logger.info("Phase 1: Searching for tickets via %s...", channel_id)
     t0 = time.time()
 
     try:
-        tickets = _search_tickets(session, cfg, start_time, end_time)
+        tickets = _search_tickets(session, cfg, start_date, end_date, channel_id)
     except requests.HTTPError as exc:
         logger.error("Search API error: %s", exc)
         return {"error": "search_api_error", "tickets_exported": 0}
