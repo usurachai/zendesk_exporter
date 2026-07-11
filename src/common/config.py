@@ -29,12 +29,19 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 
 def _merge_secrets(cfg: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
-    """Inject environment values where YAML has null placeholders or specific keys."""
-    # Export section
+    """Inject environment values. Override YAML null/default values with .env."""
+    # Export section — override if YAML has null/empty or missing
     export_cfg = cfg.get("export", {})
-    export_cfg.setdefault("subdomain", env.get("ZENDESK_SUBDOMAIN"))
-    export_cfg.setdefault("email", env.get("ZENDESK_EMAIL"))
-    export_cfg.setdefault("api_token", env.get("ZENDESK_API_TOKEN"))
+    for yaml_key, env_key in [
+        ("subdomain", "ZENDESK_SUBDOMAIN"),
+        ("email", "ZENDESK_EMAIL"),
+        ("api_token", "ZENDESK_API_TOKEN"),
+    ]:
+        env_val = env.get(env_key)
+        if env_val:
+            export_cfg[yaml_key] = env_val
+        elif not export_cfg.get(yaml_key):
+            export_cfg[yaml_key] = None
 
     # HuggingFace token
     cfg.setdefault("hf_token", env.get("HF_TOKEN"))
