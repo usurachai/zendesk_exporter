@@ -219,6 +219,8 @@ All tunable parameters in `config/config.yaml`. Secrets go in `.env` (never comm
 | `dedupe_canned` | `true` | Remove repeated canned closing messages |
 | `dedupe_exact` | `true` | Cross-conversation exact duplicate removal |
 | `max_duplicate_count` | `3` | Keep max N copies of identical messages |
+| `dedupe_sentences` | `true` | Sentence-level dedup across conversations |
+| `max_sentence_count` | `5` | Drop sentences appearing more than N times |
 | `redact_pii` | `true` | Redact phone numbers and email addresses |
 | `pii_safe_patterns` | `["support@..."]` | Patterns exempt from redaction |
 | `min_message_length` | `3` | Skip messages shorter than N chars |
