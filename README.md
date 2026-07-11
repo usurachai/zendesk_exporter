@@ -158,7 +158,10 @@ Converts raw tickets into Unsloth-format conversation data with quality cleanup.
 - Replaces raw URLs with `[link]` placeholder
 - Redacts PII: phone numbers → `[phone]`, emails → `[email]` (safe patterns preserved)
 - Deduplicates canned closing messages within conversations
-- Cross-conversation exact dedup: keeps max N copies of identical messages
+- Strips trailing Thai filler particles (ครับ/ค่ะ/ฮะ/นะครับ/etc) — preserves mid-sentence
+- Drops messages that are nothing but filler words ("ครับ", "ๆ", etc.)
+- Dynamic canned detection: discovers template signatures via substring frequency analysis
+- Cross-conversation canned dedup: keeps max N copies of any canned message
 - Drops messages shorter than `min_message_length` (default: 3 chars)
 
 **Standard pipeline:**
@@ -221,6 +224,8 @@ All tunable parameters in `config/config.yaml`. Secrets go in `.env` (never comm
 | `max_duplicate_count` | `3` | Keep max N copies of identical messages |
 | `dedupe_sentences` | `true` | Sentence-level dedup across conversations |
 | `max_sentence_count` | `5` | Drop sentences appearing more than N times |
+| `clean_fillers` | `true` | Strip trailing filler particles (ครับ/ค่ะ/ฮะ/etc) |
+| `drop_filler_only` | `true` | Drop messages that are nothing but filler words |
 | `redact_pii` | `true` | Redact phone numbers and email addresses |
 | `pii_safe_patterns` | `["support@..."]` | Patterns exempt from redaction |
 | `min_message_length` | `3` | Skip messages shorter than N chars |
