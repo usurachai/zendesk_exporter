@@ -649,6 +649,15 @@ def generate_dataset(
     }
 
     logger.info("Dataset generated: %d train / %d valid", len(train_convs), len(valid_convs))
+
+    # Save score stats (consumed by run_score.py)
+    score_stats_path = output_path / "score_stats.json"
+    try:
+        with open(score_stats_path, "w") as fh:
+            json.dump(summary, fh, ensure_ascii=False)
+    except OSError:
+        pass  # non-critical, scorer can use inline stats
+
     return summary
 
 
