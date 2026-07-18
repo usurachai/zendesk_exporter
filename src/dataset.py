@@ -858,9 +858,14 @@ def _analyze_sentences(
 def _split_sentences(text: str) -> list[str]:
     """Split text into sentences on period and newline boundaries.
 
-    Protects URLs from being split by replacing their dots with a
-    placeholder before splitting, then restoring them.
+    Protects URLs and numeric dots (time formats, version numbers)
+    from being split by replacing them with placeholders before
+    splitting, then restoring them.
     """
+    # Protect numeric dots (time formats, version numbers, decimals)
+    # Replace "." between digits with \x00 to prevent dot-splitting
+    text = re.sub(r'(\d)\.(\d)', lambda m: m.group(1) + '\x00' + m.group(2), text)
+
     # Protect URLs: replace . in URLs with placeholder
     url_pattern = re.compile(r'(https?://[^\s]+)')
     placeholders: dict[str, str] = {}
@@ -889,6 +894,8 @@ def _split_sentences(text: str) -> list[str]:
             # Restore protected URLs
             for key, url in placeholders.items():
                 stripped = stripped.replace(key, url)
+            # Restore numeric dots
+            stripped = stripped.replace('\x00', '.')
             parts.append(stripped)
     return parts
 
