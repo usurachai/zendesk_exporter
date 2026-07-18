@@ -553,6 +553,13 @@ def _build_conversations(
     return conversations
 
 
+def _is_valid_conversation(conv: dict[str, Any]) -> bool:
+    """A conversation must have at least one customer and one agent message."""
+    turns = conv.get("conversation", [])
+    roles = set(turn["role"] for turn in turns)
+    return "customer" in roles and "agent" in roles
+
+
 def generate_dataset(
     raw_dir: str,
     output_dir: str,
@@ -606,6 +613,13 @@ def generate_dataset(
         logger.error("No conversations built. Check your raw data.")
         return {"error": "no_conversations", "train_count": 0, "valid_count": 0}
 
+    # Filter degenerate conversations (single-role only)
+    before = len(conversations)
+    conversations = [c for c in conversations if _is_valid_conversation(c)]
+    dropped = before - len(conversations)
+    if dropped:
+        logger.warning("Dropped %d conversations with only one role", dropped)
+
     # FR-202: Random shuffle
     rng = random.Random(shuffle_seed)
     rng.shuffle(conversations)
@@ -631,6 +645,18 @@ def generate_dataset(
     # FR-203: Generate JSONL
     train_path = output_path / "train.jsonl"
     valid_path = output_path / "valid.jsonl"
+
+    # Post-dedup filter: dedup may strip all messages from one role
+    for label, convs in [("train", train_convs), ("valid", valid_convs)]:
+        before = len(convs)
+        filtered = [c for c in convs if _is_valid_conversation(c)]
+        dropped = before - len(filtered)
+        if dropped:
+            logger.warning("Dropped %d %s conversations (single-role after dedup)", dropped, label)
+        if label == "train":
+            train_convs = filtered
+        else:
+            valid_convs = filtered
 
     _write_jsonl(train_convs, train_path, system_prompt)
     _write_jsonl(valid_convs, valid_path, system_prompt)
