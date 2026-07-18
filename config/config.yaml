@@ -31,6 +31,7 @@ dataset:
     filter_sentences: # exact sentences to filter (populate after analysis)
         - "หากพี่มนุษย์ต้องการสอบถามข้อมูลเพิ่มเติม สามารถฝากข้อความไว้ได้ตลอดเวลาและทางทีมงานจะเร่งติดต่อกลับในเวลาทำการ จันทร์-ศุกร์ 9:00-18:00น."
         - "ต้องขออภัยที่มาตอบช้าด้วยนะฮะเนื่องจากเวลาทำการของทีมงานจะเป็นวันจันทร์-ศุกร์ 09.00-18.00 (ยกเว้นวันหยุด) น่ะฮะ"
+        - "ต้องขออภัยที่มาตอบช้าด้วยนะฮะเนื่องจากเวลาทำการของทีมงานจะเป็นวันจันทร์-ศุกร์ 09.00-18.00 น่ะฮะ"
         - "https://forms.cloud.microsoft/r/aQn2FnQqfU"
         - "https://forms.office.com/r/Nw6nmpyUkM"
     # Run `uv run python run_prepare.py --analyze` to discover candidates

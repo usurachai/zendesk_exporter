@@ -1,45 +1,14 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
-.eggs/
-
-# Environment
-.env
 .venv/
-venv/
-env/
-
-# Data
-data/raw/*.json
+.pytest_cache/
+__pycache__/
+*.pyc
+.coverage
+.env
+logs/
+.pi-subagents/
 data/train.jsonl
 data/valid.jsonl
-
-# Logs
-logs/*.log
-
-# Models & adapters
-models/
+data/score_stats.json
+data/raw/
+data/export_cursor.json
 adapters/
-*.gguf
-*.bin
-*.safetensors
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Training artifacts
-outputs/
-wandb/
