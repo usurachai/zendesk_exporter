@@ -359,7 +359,7 @@ def build_conversation(
     clean_fillers: bool = True,
     drop_filler_only: bool = True,
     pii_safe_patterns: list[str] | None = None,
-    min_length: int = 3,
+    min_length: int = 10,
 ) -> dict[str, Any] | None:
     """Convert a single raw ticket JSON into a conversation object.
 
@@ -512,7 +512,7 @@ def _build_conversations(
     clean_fillers: bool = True,
     drop_filler_only: bool = True,
     pii_safe_patterns: list[str] | None = None,
-    min_length: int = 3,
+    min_length: int = 10,
 ) -> list[dict[str, Any]]:
     """Load all raw ticket files and build conversation objects.
 
@@ -571,7 +571,7 @@ def generate_dataset(
     max_duplicate_count: int = 3,
     dedupe_sentences: bool = True,
     filter_sentences: list[str] | None = None,
-    min_message_length: int = 3,
+    min_message_length: int = 10,
 ) -> dict[str, Any]:
     """Build conversations from raw tickets and generate train/valid JSONL files.
 
@@ -948,7 +948,7 @@ def _dedupe_canned(
             else:
                 # Strip the canned phrase from the message
                 new_body = _remove_canned_phrase(body, sig)
-                if new_body and len(new_body) >= 3:
+                if new_body and len(new_body) >= 10:
                     turn["content"] = new_body
                     stripped += 1
                     filtered_turns.append(turn)
