@@ -988,7 +988,7 @@ def _remove_canned_phrase(body: str, sig: str) -> str | None:
     sig_len = len(sig)
 
     # Only strip if at the beginning (idx <= 10) or end (remaining < 10)
-    at_start = idx <= 10
+    at_start = idx <= 2
     at_end = (body_len - (idx + sig_len)) < 10
 
     if not at_start and not at_end:
