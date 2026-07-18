@@ -864,7 +864,7 @@ def _split_sentences(text: str) -> list[str]:
     """
     # Protect numeric dots (time formats, version numbers, decimals)
     # Replace "." between digits with \x00 to prevent dot-splitting
-    text = re.sub(r'(\d)\.(\d)', lambda m: m.group(1) + '\x00' + m.group(2), text)
+    text = re.sub(r'(?<=\d)\.(?=\d)', '\x00', text)
 
     # Protect URLs: replace . in URLs with placeholder
     url_pattern = re.compile(r'(https?://[^\s]+)')
