@@ -191,6 +191,34 @@ class TestSentenceSplitting:
         sentences = _split_sentences("")
         assert len(sentences) == 0
 
+    def test_time_format_not_split(self):
+        """Thai time format 09.00-18.00 preserved as single segment."""
+        text = "วันจันทร์-ศุกร์ 09.00-18.00 (ยกเว้นวันหยุด) น่ะฮะ"
+        sentences = _split_sentences(text)
+        assert len(sentences) == 1
+        assert "09.00-18.00" in sentences[0]
+
+    def test_time_format_mixed_with_sentences(self):
+        """Time format in the middle of a sentence does not cause false splits."""
+        text = "ข้อความแรก. เวลาทำการ 09.00-18.00 ฮะ. ข้อความสุดท้าย"
+        sentences = _split_sentences(text)
+        assert len(sentences) == 3
+        assert "เวลาทำการ 09.00-18.00 ฮะ" in sentences[1]
+
+    def test_version_number_preserved(self):
+        """Version numbers like 2.5.1 are not split."""
+        text = "รุ่น 2.5.1 ครับ"
+        sentences = _split_sentences(text)
+        assert len(sentences) == 1
+        assert "2.5.1" in sentences[0]
+
+    def test_url_still_protected(self):
+        """Existing URL protection still works after time-format change."""
+        text = "ดูที่นี่ https://www.example.com/guide/page เลย"
+        sentences = _split_sentences(text)
+        assert len(sentences) == 1
+        assert "https://www.example.com/guide/page" in sentences[0]
+
 
 # ---------------------------------------------------------------
 # Canned phrase removal
@@ -239,6 +267,25 @@ class TestCannedPhraseRemoval:
         result = _remove_canned_phrase("ข้อความธรรมดา", "ไม่พบลายเซ็นนี้")
         assert result is not None
         assert "ข้อความธรรมดา" in result
+
+    def test_short_prefix_preserved_thai(self):
+        """Thai text with short prefix (idx=14) no longer gets stripped mid-word."""
+        result = _remove_canned_phrase(
+            "ยินดีมากๆครับ ต้องขออภัยในความไม่สะดวก ไว้โอกาสหน้าจะปรับปรุงนะครับ",
+            "ต้องขออภัยในความไม่สะดวก",
+        )
+        assert result is not None
+        assert "ต้องขออภัยในความไม่สะดวก" in result  # preserved, not garbled
+
+    def test_truly_at_start_stripped(self):
+        """Phrase at idx=0 still gets stripped correctly."""
+        result = _remove_canned_phrase(
+            "ต้องขออภัยในความไม่สะดวกครับ",
+            "ต้องขออภัยในความไม่สะดวก",
+        )
+        assert result is not None
+        assert "ต้องขออภัยในความไม่สะดวก" not in result
+        assert "ครับ" in result
 
 
 # ---------------------------------------------------------------
