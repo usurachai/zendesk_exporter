@@ -269,9 +269,9 @@ class TestCannedPhraseRemoval:
         assert "ข้อความธรรมดา" in result
 
     def test_short_prefix_preserved_thai(self):
-        """Thai text with short prefix (idx=10) no longer gets stripped mid-word."""
+        """Thai text with short prefix (idx=14) no longer gets stripped mid-word."""
         result = _remove_canned_phrase(
-            "ยินดีมากๆครับ ต้องขออภัยในความไม่สะดวก",
+            "ยินดีมากๆครับ ต้องขออภัยในความไม่สะดวก ไว้โอกาสหน้าจะปรับปรุงนะครับ",
             "ต้องขออภัยในความไม่สะดวก",
         )
         assert result is not None
