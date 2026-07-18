@@ -122,15 +122,17 @@ zendesk_exporter/
 │   │   └── logger.py        # Structured logging
 │   ├── exporter.py          # Zendesk Search API + Comments API export
 │   ├── dataset.py           # Conversation builder + JSONL generator + cleanup
+│   ├── score_dataset.py     # Dataset quality scorer (5 dimensions)
 │   ├── trainer.py           # Unsloth LoRA fine-tuning
 │   └── tester.py            # Interactive CLI inference
 ├── run_export.py            # Entry point: export
 ├── run_prepare.py           # Entry point: dataset
+├── run_score.py             # Entry point: dataset quality scorer
 ├── run_train.py             # Entry point: train
 ├── run_test.py              # Entry point: test
 ├── tests/
 │   ├── fixtures.py           # Sample Zendesk tickets for testing
-│   └── test_dataset.py       # 24 tests for dataset preparation
+│   └── test_dataset.py       # 62 tests for dataset preparation
 ├── .env.example             # Required secrets template
 ├── requirements.txt         # Core deps (export + dataset)
 ├── requirements-train.txt   # Optional ML deps (training + inference)
@@ -172,7 +174,7 @@ Converts raw tickets into Unsloth-format conversation data with quality cleanup.
 - **Per-signature canned dedup**: keeps max N copies per template (not globally)
 - **Canned suffix stripping**: removes repeated closing templates from end of messages, keeps unique prefix
 - **Sentence filtering** (config-driven): `--analyze` mode discovers over-represented sentences, user curates filter list in config
-- Drops messages shorter than `min_message_length` (default: 3 chars)
+- Drops messages shorter than `min_message_length` (default: 10 chars)
 
 **Standard pipeline:**
 - Merges consecutive same-role messages
@@ -189,7 +191,25 @@ Fine-tunes Qwen2.5-1.5B-Instruct with LoRA using Unsloth.
 - Saves adapter to `adapters/lora_adapter/`
 - Supports resume from checkpoint
 
-### 4. Tester (`run_test.py`)
+### 4. Scorer (`run_score.py`)
+
+Evaluates dataset quality across 5 dimensions (0-100 scale):
+
+| Dimension | Weight | What It Checks |
+|-----------|--------|----------------|
+| Pipeline Integrity | 15 pts | All pipeline stages executed successfully |
+| Content Safety | 20 pts | No PII, raw URLs, or attachment metadata in final data |
+| Cleaning & Dedup | 25 pts | Effective deduplication, no garbled fragments, canned detection |
+| Dataset Fitness | 25 pts | Valid train/valid split, min message length, system prompt injection |
+| Config Engineering | 15 pts | Sensible config values and toggles |
+
+```bash
+uv run python run_score.py
+```
+
+Passing threshold: **70/100**.
+
+### 5. Tester (`run_test.py`)
 
 Interactive CLI to test the fine-tuned model.
 
@@ -238,8 +258,20 @@ All tunable parameters in `config/config.yaml`. Secrets go in `.env` (never comm
 | `drop_filler_only` | `true` | Drop messages that are nothing but filler words |
 | `redact_pii` | `true` | Redact phone numbers and email addresses |
 | `pii_safe_patterns` | `["support@..."]` | Patterns exempt from redaction |
-| `min_message_length` | `3` | Skip messages shorter than N chars |
+| `min_message_length` | `10` | Skip messages shorter than N chars |
 | `system_prompt` | *(Thai support agent)* | Injected into every sample |
+
+**Dataset scoring:**
+```bash
+uv run python run_score.py
+```
+Outputs a per-dimension quality report and final score (passing: 70/100).
+
+**Test suite:**
+```bash
+uv run python -m pytest tests/ -v
+# 62 tests — dataset builder, cleanup, dedup, scoring
+```
 
 **Sentence filtering workflow:**
 ```bash
