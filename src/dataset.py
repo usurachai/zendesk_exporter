@@ -1016,9 +1016,9 @@ def _remove_canned_phrase(body: str, sig: str) -> str | None:
     body_len = len(normalized)
     sig_len = len(sig)
 
-    # Only strip if at the beginning (idx <= 10) or end (remaining < 10)
+    # Only strip if at the beginning (idx <= 2) or end (remaining < 10 AND word-boundary before sig)
     at_start = idx <= 2
-    at_end = (body_len - (idx + sig_len)) < 10
+    at_end = (body_len - (idx + sig_len)) < 10 and (idx == 0 or normalized[idx - 1] == ' ')
 
     if not at_start and not at_end:
         return body  # mid-message: keep intact
