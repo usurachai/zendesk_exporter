@@ -630,17 +630,20 @@ def generate_dataset(
     train_convs = conversations[:split_idx]
     valid_convs = conversations[split_idx:]
 
-    # Cross-conversation exact dedup on training set only
+    # Cross-conversation exact dedup
     if dedupe_exact:
         train_convs = _dedupe_exact(train_convs, max_copies=max_duplicate_count)
+        valid_convs = _dedupe_exact(valid_convs, max_copies=max_duplicate_count)
 
-    # Sentence-level dedup on training set
+    # Sentence-level dedup
     if dedupe_sentences and filter_sentences:
         train_convs = _dedupe_sentences(train_convs, filter_list=set(filter_sentences))
+        valid_convs = _dedupe_sentences(valid_convs, filter_list=set(filter_sentences))
 
     # Cross-conversation canned message dedup
     if dedupe_canned:
         train_convs = _dedupe_canned(train_convs, max_copies=max_duplicate_count)
+        valid_convs = _dedupe_canned(valid_convs, max_copies=max_duplicate_count)
 
     # FR-203: Generate JSONL
     train_path = output_path / "train.jsonl"
