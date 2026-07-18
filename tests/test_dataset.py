@@ -38,7 +38,7 @@ class TestBuildConversation:
 
     def test_normal_conversation(self):
         """Full conversation with customer and agent messages preserved."""
-        conv = build_conversation(TICKET_NORMAL, agent_names=AGENT_NAMES)
+        conv = build_conversation(TICKET_NORMAL, agent_names=AGENT_NAMES, min_length=3)
         assert conv is not None
         assert len(conv["conversation"]) == 3
         assert conv["conversation"][0]["role"] == "customer"
@@ -157,7 +157,8 @@ class TestFillerCleaning:
     def test_filler_in_ticket(self):
         """Filler-only messages dropped from conversation."""
         conv = build_conversation(TICKET_WITH_FILLERS, agent_names=AGENT_NAMES,
-                                   clean_fillers=True, drop_filler_only=True)
+                                   clean_fillers=True, drop_filler_only=True,
+                                   min_length=3)
         assert conv is not None
         # "สวัสดีครับ" → "สวัสดี" (trailing stripped), "ครับ" → dropped (filler-only)
         # So only "สวัสดี" from customer remains
