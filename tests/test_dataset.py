@@ -459,6 +459,12 @@ class TestCannedDedupDominant:
         assert len(result) == 1
         assert result[0]["conversation"][0]["content"] == "unique message no sig here"
 
+    def test_short_fragment_after_strip_dropped(self):
+        """Fragment under 10 chars after canned strip is dropped."""
+        result = _remove_canned_phrase("ยินดีมากๆ ด)", "ด)")
+        assert result == "ยินดีมากๆ"
+        assert len(result) <= 10
+
 
 # ---------------------------------------------------------------
 # Sentence dedup edge cases
