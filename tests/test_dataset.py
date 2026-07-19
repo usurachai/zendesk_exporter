@@ -77,6 +77,18 @@ class TestPIIRedaction:
         assert "081-234-5678" not in cleaned
         assert "[phone]" in cleaned
 
+    def test_phone_international_plus66(self):
+        """Regression: +66 international format must be redacted.
+
+        Bug: _PHONE_RE only matched the national '0...' format, so
+        '+66947874747' leaked into training data.
+        """
+        body = "ณดลชล สารใจ. +66947874747. เลขที่ 40 ถนนสนามกีฬา"
+        cleaned = _clean_message(body, redact_pii=True)
+        assert cleaned is not None
+        assert "+66947874747" not in cleaned
+        assert "[phone]" in cleaned
+
     def test_email_redaction(self):
         body = "email test@example.com ครับ"
         cleaned = _clean_message(body, redact_pii=True)
