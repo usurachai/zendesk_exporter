@@ -88,12 +88,6 @@ def _load_dataset(cfg: dict[str, Any]) -> Any:
     dataset = load_dataset(
         "json",
         data_files={"train": train_path, "validation": valid_path},
-        split="train",
-    )
-    # Load validation split
-    dataset = load_dataset(
-        "json",
-        data_files={"train": train_path, "validation": valid_path},
     )
 
     logger.info(
