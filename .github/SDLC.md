@@ -1,7 +1,10 @@
-# Agent-Driven GitHub SDLC Workflow
+# Agent-Driven GitHub SDLC — Fully Agentic Mode
 
-Industry-standard, PR-gated software development lifecycle for autonomous
-subagent execution. Designed for the `pi-subagents` orchestration model.
+Autonomous software development lifecycle with **human-in-the-loop only for
+important actions** (risky merges, security/critical changes, or when an agent
+is genuinely blocked). All routine work — discovery, issue writing,
+implementation, PR creation, and review — is performed by subagents with **zero
+human interaction**.
 
 ---
 
@@ -9,12 +12,112 @@ subagent execution. Designed for the `pi-subagents` orchestration model.
 
 | # | Principle | Why |
 |---|-----------|-----|
-| 1 | **Main is protected** — no direct pushes | Prevents unreviewed code reaching `main` |
-| 2 | **Every change goes through a PR** | Traceability + mandatory review gate |
-| 3 | **4-eyes rule** — author ≠ reviewer | Catch what the author missed |
-| 4 | **Issue = handoff artifact** | Self-contained; any worker can implement from it alone |
-| 5 | **Verify before you write** | Free reviewer models produce false positives — confirm claims against real code |
-| 6 | **Minimal change** | Smallest correct diff reduces review surface and regression risk |
+| 1 | **Agentic by default** | Subagents run discovery → issue → fix → PR → review autonomously |
+| 2 | **Human only at decision gates** | Humans appear solely for important actions (T2/T3 merge, blocks) |
+| 3 | **Risk-based gating** | T1 auto-merges; T2/T3 require human approval |
+| 4 | **Self-healing loops** | Review failures are auto-fixed by the worker — no human |
+| 5 | **Silent progress / loud blockers** | No routine pings; escalate only on gate or block |
+| 6 | **Verify before write** | Phase 1 verifies reviewer claims (free models hallucinate) |
+| 7 | **Minimal change** | Smallest correct diff reduces review surface |
+
+---
+
+## Risk Tiers (drive the human gate)
+
+| Tier | Examples | Agent behavior | Human? |
+|------|----------|----------------|--------|
+| **T1 — Safe** | Bug fix, test, doc, lint, internal refactor (tests green, no security touch) | Auto-merge after CI + review pass | **Notified only** |
+| **T2 — Notable** | New feature, config change, dependency bump, API change | Open PR + pause + concise summary | **Yes — approve merge** |
+| **T3 — Critical** | Security, auth, credentials, data model, deletion, architecture | Open PR + pause + full context | **Yes — must review** |
+
+The **reviewer** classifies the tier from the diff (paths touched, keywords,
+test impact, security-relevant patterns).
+
+---
+
+## Pipeline (autonomy-annotated)
+
+```
+TRIGGER (schedule / new finding / manual)
+  │
+  ├─ PHASE 0  scout     → discover ONE candidate issue          [AUTONOMOUS]
+  ├─ PHASE 1  planner   → verify claim + write self-contained issue [AUTONOMOUS]
+  ├─ PHASE 2  worker    → branch + implement + verify (tests)   [AUTONOMOUS]
+  ├─ PHASE 3  worker    → push + open PR (references issue)     [AUTONOMOUS]
+  ├─ PHASE 4  reviewer  → auto-review + classify risk tier      [AUTONOMOUS]
+  │        │
+  │        ├─ PASS + T1       → AUTO-MERGE (agentic)            [AGENTIC]
+  │        ├─ PASS + T2/T3     → PAUSE → notify human            [HUMAN GATE]
+  │        └─ FAIL (defects)   → worker auto-fixes → re-review   [SELF-HEAL]
+  │                                └─ loop ×N exhausts → ESCALATE [HUMAN]
+  │
+  └─ PHASE 5  human     → approve T2/T3 merge                  [HUMAN GATE]
+```
+
+**Key shift from manual mode:** Phases 0–4 execute with no human in the loop.
+The human is contacted only at Phase 5 (risky merges) or on escalation.
+
+---
+
+## Self-Healing Review Loop
+
+On review failure (defects found, not an architecture blocker):
+
+1. Reviewer reports findings (file:line, severity).
+2. Worker receives findings, applies minimal fix on the same branch.
+3. Worker pushes; PR is updated.
+4. Reviewer re-reviews.
+5. Repeat up to `MAX_REVIEW_ROUNDS` (default **3**).
+6. If the loop exhausts → **escalate to human** with full context.
+
+No human participates in the loop. The human sees only the final merged
+result or an escalation.
+
+---
+
+## Human Gates (the only places humans appear)
+
+| # | Gate | When | Human action |
+|---|------|------|--------------|
+| 1 | **Risky merge** | T2/T3 PR passes review | Approve / deny (one click) |
+| 2 | **Blocked agent** | Worker needs a decision it cannot make | Answer one question |
+| 3 | **Loop exhausted** | Review fails `MAX_REVIEW_ROUNDS` times | Triage or intervene |
+
+Routine T1 fixes merge themselves. The human never sees step-by-step
+progress — only a quiet "merged #24" note or a "needs your approval: #25" ping.
+
+---
+
+## Triggers
+
+| Trigger | Mechanism | Notes |
+|---------|-----------|-------|
+| **Scheduled (nightly)** | Chain `nightly-triage` via cron or `subagent schedule` | Fully autonomous discovery + fix |
+| **New finding** | Reviewer / scout output | Orchestrator launches the chain |
+| **Manual** | `/run-chain nightly-triage` | On-demand |
+
+### Nightly schedule
+
+The `nightly-triage` chain (`.pi/chains/nightly-triage.chain.json`) runs:
+`scout → planner → worker → reviewer`.
+
+Enable scheduling in `~/.pi/agent/extensions/subagent/config.json`:
+```json
+{ "scheduledRuns": { "enabled": true } }
+```
+
+Activate a deferred one-off run:
+```
+subagent({ action: "schedule",
+  chain: [ {agent:"scout",...}, {agent:"planner",...}, {agent:"worker",...}, {agent:"reviewer",...} ],
+  schedule: "+1d" })
+```
+
+For **true nightly recurrence**, wrap in an external cron job (native scheduling
+is one-shot):
+```
+0 2 * * *  cd /path/to/repo && pi run-chain nightly-triage
+```
 
 ---
 
@@ -31,97 +134,29 @@ Branch naming: `<type>/issue-<NNN>-<kebab-short-desc>`, branched from `origin/ma
 
 ---
 
-## Workflow Phases
+## Issue = Handoff Artifact
 
-```
-┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
-│ PHASE 0      │ → │ PHASE 1      │ → │ PHASE 2-4    │ → │ PHASE 5      │ → │ PHASE 6      │
-│ DISCOVERY    │   │ ISSUE        │   │ IMPL + PR    │   │ REVIEW       │   │ MERGE        │
-│ reviewer     │   │ planner      │   │ worker       │   │ reviewer     │   │ reviewer     │
-│ (fresh)      │   │ (verify!)    │   │ (branch+fix) │   │ (fresh,diff) │   │ (decision)   │
-└──────────────┘   └──────────────┘   └──────────────┘   └──────────────┘   └──────────────┘
-```
+The Phase 1 issue is **self-contained** so any worker can implement from it
+alone (no re-analysis). Use `.github/ISSUE_TEMPLATE/agent_handoff.md`:
 
-### Phase 0 — Discovery & Triage
-- **Agent:** `reviewer` (fresh context) or `scout`
-- **Action:** Scan repo, produce candidate issues with `file:line` references and severity tags.
-- **Output:** List of findings. Treat as *candidates*, not facts.
+- Root cause with `file:line` + code snippet (**verified**)
+- Impact + severity
+- Concrete proposed fix (exact edit if known)
+- Acceptance criteria (checkboxes)
+- Verification steps (commands)
 
-### Phase 1 — Issue Creation (Handoff Artifact) ⚠️ VERIFY FIRST
-- **Agent:** `planner` (or `reviewer`)
-- **Critical step:** Before writing the issue, **verify every claim against the actual code**.
-  The `reviewer` (Nemotron free) has produced false positives in this repo
-  (`exporter.py` "unused start_time" — actually used; `logger.py` "duplicate handler" —
-  already idempotent). Unverified issues waste worker cycles.
-- **Issue must contain** (use `.github/ISSUE_TEMPLATE/agent_handoff.md`):
-  - Root cause with `file:line` + code snippet (**verified**)
-  - Impact + severity
-  - Concrete proposed fix (exact edit if known)
-  - Acceptance criteria (checkboxes)
-  - Verification steps (commands)
-- **Self-contained:** a worker must implement from this alone, no re-analysis.
-
-### Phase 2 — Branch
-- **Agent:** `worker`
-- **Command:** `git checkout -b fix/issue-NNN-short-desc origin/main`
-
-### Phase 3 — Implementation
-- **Agent:** `worker`
-- Implement the **minimal** fix described in the issue.
-- Run verification **before** committing:
-  ```bash
-  uv run python -c "import ast,glob; [ast.parse(open(f).read()) for f in glob.glob('src/**/*.py', recursive=True)]"
-  uv run python -m pytest tests/
-  ```
-- Commit: `git commit -m "fix: <summary> (closes #NNN)"`
-
-### Phase 4 — PR Submission
-- **Agent:** `worker` (the SAME agent that made the change)
-- Push branch, open PR referencing the issue:
-  ```bash
-  git push origin fix/issue-NNN-short-desc
-  gh pr create --base main --head fix/issue-NNN-short-desc \
-    --title "fix: <summary> (closes #NNN)" \
-    --body "$(cat <<'EOF'
-  ## Related Issue
-  Closes #NNN
-
-  ## Summary
-  <what + why>
-
-  ## Verification
-  - Syntax: OK
-  - Tests: 62 passed
-  EOF
-  )"
-  ```
-
-### Phase 5 — PR Review (4-eyes, DIFFERENT agent)
-- **Agent:** `reviewer` (fresh context, **NOT** the worker)
-- Review the diff for correctness, tests, conventions, regressions.
-- Decision:
-  ```bash
-  gh pr review <PR> --approve
-  # or
-  gh pr review <PR> --request-changes --body "<findings>"
-  ```
-- If changes requested → worker iterates (back to Phase 3).
-
-### Phase 6 — Merge Decision
-- **Agent:** `reviewer` (the one who approved)
-- If approved **and** CI is green:
-  ```bash
-  gh pr merge <PR> --squash --delete-branch
-  ```
-- Issue auto-closes via `closes #NNN` in commit/PR body.
+> **Verification is mandatory.** The `reviewer` (Nemotron free) has produced
+> false positives in this repo (`exporter.py` "unused start_time" — actually
+> used; `logger.py` "duplicate handler" — already idempotent). Never write an
+> issue from unverified reviewer output.
 
 ---
 
 ## Enforcement & Constraints
 
 ### Branch Protection (recommended)
-Requires **GitHub Pro or a public repo**. For this private repo, the API returns
-`403 Upgrade to GitHub Pro or make this repository public`. To enable:
+Requires **GitHub Pro or a public repo**. For this private repo the API returns
+`403`. To enable:
 ```bash
 gh api repos/<owner>/<repo>/branches/main/protection --method PUT \
   -F required_status_checks='{"strict":true,"contexts":["test"]}' \
@@ -129,19 +164,20 @@ gh api repos/<owner>/<repo>/branches/main/protection --method PUT \
   -F required_pull_request_reviews='{"dismiss_stale_reviews":true,"required_approving_review_count":1}' \
   -F restrictions=null
 ```
-This enforces: PR required, ≥1 review, `test` status check must pass.
+Enforces: PR required, ≥1 review, `test` status check must pass.
 
 ### Until branch protection is available
-The policy is enforced by **orchestrator discipline**:
-- The parent agent **never pushes to `main` directly**.
-- All changes flow through a PR (Phases 2–6).
-- CI (`.github/workflows/ci.yml`) runs `test` on every PR to `main`, providing
-  the automated gate.
+- The policy is enforced by **orchestrator discipline** (never push to `main`).
+- CI (`.github/workflows/ci.yml`) runs `test` on every PR to `main` — automated gate.
+- The **risk-tier policy** substitutes for 4-eyes: T1 auto-merges, T2/T3 require human.
 
-### Reviewer Model Reliability
-The `reviewer` agent uses `nvidia/nemotron-3-ultra-550b-a55b:free`. Free models
-can hallucinate findings. **Phase 1 verification is mandatory** — never write an
-issue from unverified reviewer output.
+### Known constraints (this environment)
+| Constraint | Impact | Handling |
+|-----------|--------|----------|
+| Single GitHub account | Cannot enforce true 4-eyes (author == reviewer) | Risk-tier policy is the substitute |
+| Branch protection needs Pro/public | No enforced review gate | CI gate + tier policy |
+| Reviewer (Nemotron free) false positives | Wrong T3 flags waste human attention | Verify in Phase 1; use MiMo for T3 second review |
+| Worker/planner subagents need `intercom` bridge | Pipeline stalls if bridge absent | Orchestrator runs Phases 2–3; reviewer subagent works |
 
 ---
 
@@ -149,11 +185,11 @@ issue from unverified reviewer output.
 
 | Agent | Model | Role in workflow |
 |-------|-------|-----------------|
-| `reviewer` | Nemotron 3 Ultra (free) | Phase 0 discovery, Phase 5 PR review |
-| `planner` | MiMo-V2.5 | Phase 1 issue creation |
-| `worker` | MiMo-V2.5 | Phases 2–4 implementation + PR |
+| `scout` | Hy3 (free) | Phase 0 discovery |
+| `planner` | MiMo-V2.5 | Phase 1 verified issue |
+| `worker` | MiMo-V2.5 | Phases 2–3 implementation + PR |
+| `reviewer` | Nemotron 3 Ultra (free) | Phase 4 review + tier routing |
 | `oracle` | MiMo-V2.5 | Escalation / direction check |
-| `scout` | Hy3 (free) | Fast recon |
 | `context-builder` | DeepSeek V4 Flash | Context synthesis |
 | `researcher` | DeepSeek V4 Flash | External research |
 | `delegate` | Hy3 (free) | Lightweight delegation |
