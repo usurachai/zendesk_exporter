@@ -18,6 +18,9 @@ Zendesk Search API + Comments API
    run_prepare.py     →  data/train.jsonl + data/valid.jsonl
         │
         ▼
+   run_score.py       →  quality report  (optional)
+        │
+        ▼
    run_train.py       →  adapters/lora_adapter/
         │
         ▼
@@ -132,7 +135,7 @@ zendesk_exporter/
 ├── run_test.py              # Entry point: test
 ├── tests/
 │   ├── fixtures.py           # Sample Zendesk tickets for testing
-│   └── test_dataset.py       # 62 tests for dataset preparation
+│   └── test_dataset.py       # 63 tests for dataset preparation
 ├── .env.example             # Required secrets template
 ├── requirements.txt         # Core deps (export + dataset)
 ├── requirements-train.txt   # Optional ML deps (training + inference)
@@ -270,7 +273,7 @@ Outputs a per-dimension quality report and final score (passing: 70/100).
 **Test suite:**
 ```bash
 uv run python -m pytest tests/ -v
-# 62 tests — dataset builder, cleanup, dedup, scoring
+# 63 tests — dataset builder, cleanup, dedup, scoring
 ```
 
 **Sentence filtering workflow:**
@@ -320,6 +323,16 @@ uv run python run_prepare.py
 **Included:** Facebook Messenger (Sunshine Conversations) only, Thai language, historical ticket export with full conversations, data quality cleanup, LoRA fine-tuning, local inference.
 
 **Excluded:** RAG, FastAPI, CI/CD, MLOps, auto-reply, dashboard, multi-language.
+
+---
+
+## Development
+
+This repo follows an **agent-driven SDLC** — see [`.github/SDLC.md`](.github/SDLC.md) for the full workflow (risk tiers, self-healing review loops, nightly triage pipeline).
+
+- **CI**: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs syntax check + the full test suite on every PR to `main`.
+- **PR template**: [`.github/pull_request_template.md`](.github/pull_request_template.md) ensures every change has evidence attached.
+- **Issue template**: [`.github/ISSUE_TEMPLATE/agent_handoff.md`](.github/ISSUE_TEMPLATE/agent_handoff.md) enables self-contained subagent handoff.
 
 ---
 
