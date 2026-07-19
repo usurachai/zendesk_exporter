@@ -72,13 +72,15 @@ def _apply_lora(model: Any, cfg: dict[str, Any]) -> Any:
     return model
 
 
-def _load_dataset(cfg: dict[str, Any]) -> Any:
+def _load_dataset(cfg: dict[str, Any], train_path: str | None = None, valid_path: str | None = None) -> Any:
     """Load train/valid JSONL as HuggingFace Dataset — FR-302."""
     from datasets import load_dataset  # type: ignore[import-untyped]
 
     data_dir = Path(cfg.get("dataset_dir", "data"))
-    train_path = str(data_dir / "train.jsonl")
-    valid_path = str(data_dir / "valid.jsonl")
+    if train_path is None:
+        train_path = str(data_dir / "train.jsonl")
+    if valid_path is None:
+        valid_path = str(data_dir / "valid.jsonl")
 
     if not Path(train_path).exists():
         logger.error("train.jsonl not found at %s. Run run_prepare.py first.", train_path)
@@ -98,9 +100,25 @@ def _load_dataset(cfg: dict[str, Any]) -> Any:
     return dataset
 
 
-def _format_example(example: dict[str, Any], tokenizer: Any) -> dict[str, Any]:
-    """Format a single chat example into tokenized tensors."""
+def _format_example(example: dict[str, Any], tokenizer: Any, max_seq_length: int) -> dict[str, Any]:
+    """Format a single chat example into tokenized tensors.
+
+    Masks prompt tokens (system + user) so loss is computed only on the
+    assistant response — standard SFT practice.
+    """
     messages = example["messages"]
+
+    # Tokenize prompt (everything before the last assistant response)
+    prompt = tokenizer.apply_chat_template(
+        messages[:-1],
+        tokenize=True,
+        add_generation_prompt=True,
+        truncation=True,
+        max_length=max_seq_length,
+    )
+    prompt_len = len(prompt["input_ids"])
+
+    # Tokenize the full conversation (prompt + assistant response)
     text = tokenizer.apply_chat_template(
         messages,
         tokenize=False,
@@ -109,13 +127,20 @@ def _format_example(example: dict[str, Any], tokenizer: Any) -> dict[str, Any]:
     tokenized = tokenizer(
         text,
         truncation=True,
-        max_length=2048,
+        max_length=max_seq_length,
         padding=False,
     )
+    input_ids = tokenized["input_ids"]
+    labels = input_ids.copy()
+
+    # Mask prompt tokens: only the assistant response contributes to loss
+    if 0 < prompt_len < len(labels):
+        labels[:prompt_len] = [-100] * prompt_len
+
     return {
-        "input_ids": tokenized["input_ids"],
+        "input_ids": input_ids,
         "attention_mask": tokenized["attention_mask"],
-        "labels": tokenized["input_ids"].copy(),
+        "labels": labels,
     }
 
 
@@ -143,11 +168,13 @@ def run_training(
     model = _apply_lora(model, cfg)
 
     # Step 3: Load dataset — FR-302
-    dataset = _load_dataset(cfg)
+    dataset = _load_dataset(cfg, train_path=train_path, valid_path=valid_path)
 
     # Step 4: Format dataset
+    max_seq_length = cfg.get("max_seq_length", 2048)
+
     def _fmt(ex: dict[str, Any]) -> dict[str, Any]:
-        return _format_example(ex, tokenizer)
+        return _format_example(ex, tokenizer, max_seq_length)
 
     train_ds = dataset["train"].map(_fmt, remove_columns=dataset["train"].column_names)
     valid_ds = dataset["validation"].map(_fmt, remove_columns=dataset["validation"].column_names)
@@ -167,6 +194,8 @@ def run_training(
     logging_steps = cfg.get("logging_steps", 1)
     save_steps = cfg.get("save_steps", 100)
 
+    # Determine precision: bf16 recommended on Ampere+ GPUs, fallback to fp16
+    use_bf16 = cfg.get("bf16", True)
     training_args = TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=num_epochs,
@@ -181,9 +210,9 @@ def run_training(
         eval_steps=save_steps,
         save_total_limit=3,
         load_best_model_at_end=True,
-        fp16=True,
+        bf16=use_bf16,
+        fp16=not use_bf16,
         report_to="none",
-        resume_from_checkpoint=cfg.get("resume_from_checkpoint") is not None,  # FR-305
     )
 
     trainer = SFTTrainer(
