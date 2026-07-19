@@ -684,8 +684,8 @@ def generate_dataset(
     try:
         with open(score_stats_path, "w") as fh:
             json.dump(summary, fh, ensure_ascii=False)
-    except OSError:
-        pass  # non-critical, scorer can use inline stats
+    except OSError as e:
+        logger.warning("Could not write %s: %s", score_stats_path, e)
 
     return summary
 
