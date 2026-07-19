@@ -183,7 +183,7 @@ def _clean_fillers(body: str) -> str | None:
     return cleaned
 
 # PII patterns for redaction
-_PHONE_RE = re.compile(r"0\d{1,2}[-\s]?\d{3}[-\s]?\d{4}")
+_PHONE_RE = re.compile(r"(?:\+66[-\s]?|0)\d{1,2}[-\s]?\d{3}[-\s]?\d{4}")
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w.-]+\.\w+")
 
 
