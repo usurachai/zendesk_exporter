@@ -1,0 +1,23 @@
+{
+  "name": "nightly-triage",
+  "description": "Autonomous nightly bug-triage pipeline: discover → verify → fix → PR → review. Human only at the T2/T3 merge gate.",
+  "context": "fresh",
+  "steps": [
+    {
+      "agent": "scout",
+      "task": "Scan the repository at the current working directory. Find ONE concrete, verifiable code issue (bug, dead code, silent exception, missing validation, inefficiency). Return: file path, line numbers, severity (blocker/warning/nit), and a one-line root cause. Do NOT modify files. If no issue is found, return exactly: NO_ISSUE"
+    },
+    {
+      "agent": "planner",
+      "task": "Scout finding:\n{previous}\n\nRead the cited file and VERIFY the claim against the actual code. If verified, create a GitHub issue with `gh issue create` containing: root cause (file:line + snippet), impact + severity, proposed minimal fix, acceptance criteria, verification steps. Return the issue URL and number. If the claim is unverifiable or the scout returned NO_ISSUE, return exactly: SKIP"
+    },
+    {
+      "agent": "worker",
+      "task": "GitHub issue from planner:\n{previous}\n\nRead the issue (gh issue view <number>). Then: (1) git checkout -b fix/issue-NNN-short-desc origin/main, (2) apply the minimal verified fix, (3) verify with `uv run python -c \"import ast; ast.parse(open('src/...').read())\"` and `uv run python -m pytest tests/`, (4) git commit -m \"fix: <summary> (closes #NNN)\", (5) git push origin fix/issue-NNN-short-desc, (6) gh pr create --base main --head fix/issue-NNN-short-desc --title \"fix: <summary> (closes #NNN)\". Return the PR URL. Do NOT merge."
+    },
+    {
+      "agent": "reviewer",
+      "task": "Review the PR from worker:\n{previous}\n\nClassify the risk tier from the diff: T1 (safe — bug/test/doc/refactor, tests green, no security/credential/data-model touch) → run `gh pr merge --squash --delete-branch`; T2/T3 (feature/config/security/critical) → PAUSE, report a concise summary for the human, do NOT merge; if defects are found → report findings (the worker auto-fixes in the next loop). Return the decision."
+    }
+  ]
+}
