@@ -358,8 +358,6 @@ def run_export(
         )
         return {"error": "missing_start_date", "tickets_exported": 0}
 
-    start_time = _parse_date(start_date)
-    end_time = _parse_date(end_date)
     channel_id = cfg.get("channel_id", "sunshine_conversations_facebook_messenger")
 
     output_dir = Path(cfg.get("output_dir", "data/raw"))

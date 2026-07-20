@@ -7,7 +7,6 @@ Functional Requirements:
   FR-404: Exit gracefully
 """
 
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -80,7 +79,9 @@ def _generate_response(
         do_sample=True,
     )
 
-    response = tokenizer.decode(outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True)
+    response = tokenizer.decode(
+        outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True
+    )
     return response.strip()
 
 

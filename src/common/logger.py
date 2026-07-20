@@ -2,7 +2,6 @@
 
 import logging
 import sys
-from pathlib import Path
 
 from src.common.config import PROJECT_ROOT
 

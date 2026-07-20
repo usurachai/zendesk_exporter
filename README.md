@@ -44,15 +44,14 @@ Zendesk Search API + Comments API
 git clone git@github.com:usurachai/zendesk_exporter.git
 cd zendesk_exporter
 
-# Create virtual environment and install core dependencies (export + dataset only)
-uv venv
-uv pip install -r requirements.txt
+# Create virtual environment and install core dependencies (export + dataset + tests + lint)
+uv sync
 ```
 
-For training and inference, install the optional ML dependencies (**~280 MB download, requires CUDA GPU**):
+For training and inference, include the optional ML dependencies (**~280 MB download, requires CUDA GPU**):
 
 ```bash
-uv pip install -r requirements-train.txt
+uv sync --extra train
 ```
 
 > **Note:** `uv` manages the virtual environment automatically. All `uv run` commands below execute inside `.venv` — no manual activation needed.
