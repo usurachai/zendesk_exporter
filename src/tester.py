@@ -88,13 +88,6 @@ def _generate_response(
 # Interactive CLI — FR-403, FR-404
 # ---------------------------------------------------------------
 
-SYSTEM_PROMPT = (
-    "คุณเป็นเจ้าหน้าที่ฝ่ายบริการลูกค้าที่สุภาพและเป็นมืออาชีพ "
-    "ตอบคำถามเป็นภาษาไทย ให้ถามข้อมูลที่จำเป็นก่อนเริ่มแก้ปัญหา "
-    "และส่งต่อให้ผู้เชี่ยวชาญเมื่อจำเป็น"
-)
-
-
 def run_interactive(config_path: str | None = None) -> None:
     """Start an interactive chat session — FR-403, FR-404.
 
@@ -115,8 +108,10 @@ def run_interactive(config_path: str | None = None) -> None:
 
     model, tokenizer = _load_model_for_inference(cfg)
 
+    system_prompt = cfg.get("system_prompt", "")
+
     history: list[dict[str, str]] = [
-        {"role": "system", "content": SYSTEM_PROMPT}
+        {"role": "system", "content": system_prompt}
     ]
 
     while True:
