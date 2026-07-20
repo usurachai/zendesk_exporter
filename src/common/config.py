@@ -81,9 +81,9 @@ def get_dataset_config() -> dict[str, Any]:
     return load_config().get("dataset", {})
 
 
-def get_training_config() -> dict[str, Any]:
+def get_training_config(config_path: str | None = None) -> dict[str, Any]:
     """Return training section of config."""
-    return load_config().get("training", {})
+    return load_config(config_path).get("training", {})
 
 
 def get_inference_config() -> dict[str, Any]:
