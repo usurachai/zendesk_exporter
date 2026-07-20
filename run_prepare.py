@@ -70,7 +70,7 @@ def main() -> int:
         max_duplicate_count=cfg.get("max_duplicate_count", 3),
         dedupe_sentences=cfg.get("dedupe_sentences", True),
         filter_sentences=cfg.get("filter_sentences", []),
-        min_message_length=cfg.get("min_message_length", 3),
+        min_message_length=cfg.get("min_message_length", 10),
     )
 
     if "error" in result:
@@ -100,7 +100,7 @@ def _run_analyze(cfg: dict) -> int:
         clean_fillers=cfg.get("clean_fillers", True),
         drop_filler_only=cfg.get("drop_filler_only", True),
         pii_safe_patterns=cfg.get("pii_safe_patterns", []),
-        min_length=cfg.get("min_message_length", 3),
+        min_length=cfg.get("min_message_length", 10),
     )
 
     if not conversations:
