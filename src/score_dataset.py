@@ -210,13 +210,24 @@ class DatasetScore:
         return score
 
     def _check_garbling(self) -> bool:
-        """Quick heuristic for garbled text artifacts."""
-        garbled_patterns = ["scription", "ม่สะดวก", "ต่าหาก", "https://forms", "://forms."]
+        """Quick heuristic for garbled text artifacts.
+
+        Patterns are specific to avoid false-flagging legitimate words:
+        "scription" matched "subscription", "description", etc.
+        """
+        garbled_patterns = [
+            r"(?<!\w)bscription",  # garbled "bscription", not "subscription"
+            "ม่สะดวก",                 # garbled "ไม่สะดวก"
+            "ต่าหาก",                  # garbled "ต่างหาก"
+            "https://forms",
+            "://forms.",
+        ]
         for split in (self.train, self.valid):
             for c in split:
                 for m in c.get("messages", []):
+                    content = m.get("content", "")
                     for pat in garbled_patterns:
-                        if pat in m.get("content", ""):
+                        if re.search(pat, content):
                             return True
         return False
 
@@ -291,8 +302,9 @@ class DatasetScore:
             score += 5
 
         # 5 pts — logging / stats
-        # Already has structured log entries — we assume if it runs, it logs
-        score += 5
+        # Only award when logging handlers are actually wired up
+        if logging.getLogger().handlers or logger.handlers:
+            score += 5
 
         return score
 
