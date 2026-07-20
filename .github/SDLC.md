@@ -1,5 +1,8 @@
 # Agent-Driven GitHub SDLC — Fully Agentic Mode
 
+> **Concrete step-by-step instructions for subagents:**
+> See [WORKFLOW.md](./WORKFLOW.md) — this is the mandatory workflow that all subagents must follow.
+
 Autonomous software development lifecycle with **human-in-the-loop only for
 important actions** (risky merges, security/critical changes, or when an agent
 is genuinely blocked). All routine work — discovery, issue writing,
