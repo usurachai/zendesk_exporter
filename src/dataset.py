@@ -28,7 +28,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-from src.common.config import get_dataset_config
 from src.common.logger import get_logger
 
 logger = get_logger(__name__)
@@ -253,15 +252,6 @@ def _discover_canned_signatures(
     return signatures
 
 
-def _contains_canned(body: str, signatures: set[str]) -> bool:
-    """Check if a message contains any canned signature substring."""
-    normalized = " ".join(body.split())
-    for sig in signatures:
-        if sig in normalized:
-            return True
-    return False
-
-
 def _redact_pii(body: str, safe_patterns: list[str] | None = None) -> str:
     """Redact phone numbers and email addresses from message body.
 
@@ -331,23 +321,6 @@ def _is_public(comment: dict[str, Any]) -> bool:
 def _is_non_empty(comment: dict[str, Any]) -> bool:
     """Return True if comment body is non-empty after stripping — FR-105."""
     return bool(comment.get("body", "").strip())
-
-
-def _classify_sunshine(
-    body: str,
-    customer_name: str,
-) -> tuple[str, str]:
-    """Classify a Sunshine Conversations message as customer or agent.
-
-    Returns (role, cleaned_body).
-    """
-    author = _parse_sunshine_author(body)
-    cleaned = _strip_sunshine_prefix(body)
-
-    if author and author.lower() == customer_name.lower():
-        return "customer", cleaned
-    else:
-        return "agent", cleaned
 
 
 def build_conversation(
