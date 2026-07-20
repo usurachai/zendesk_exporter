@@ -23,7 +23,7 @@ jobs:
         run: uv python install 3.11
 
       - name: Install dependencies
-        run: uv sync
+        run: uv pip install -r requirements.txt -r requirements-train.txt
 
       - name: Syntax check
         run: |
