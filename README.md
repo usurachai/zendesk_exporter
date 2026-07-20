@@ -113,12 +113,19 @@ python run_test.py
 
 ```
 zendesk_exporter/
+├── AGENTS.md                 # Project instructions for subagents (auto-loaded by pi)
 ├── config/
 │   └── config.yaml          # All tunable parameters
 ├── data/
 │   ├── raw/                 # Exported ticket JSON (gitignored)
 │   ├── train.jsonl          # Unsloth-format training data
 │   └── valid.jsonl          # Unsloth-format validation data
+├── .github/
+│   ├── SDLC.md              # Agent-driven SDLC overview
+│   ├── WORKFLOW.md          # Concrete subagent workflow (finding → issue → branch → code → PR → review → merge)
+│   ├── pull_request_template.md
+│   ├── ISSUE_TEMPLATE/agent_handoff.md
+│   └── workflows/ci.yml
 ├── src/
 │   ├── common/
 │   │   ├── config.py        # YAML + .env loader
@@ -191,6 +198,8 @@ Fine-tunes Qwen2.5-1.5B-Instruct with LoRA using Unsloth.
 
 - 4-bit quantization for memory efficiency
 - Configurable LoRA rank, alpha, target modules
+- `--train` / `--valid` CLI flags to override train.jsonl / valid.jsonl paths
+- `max_seq_length` read from config (no hardcoded truncation window)
 - Saves adapter to `adapters/lora_adapter/`
 - Supports resume from checkpoint
 
@@ -202,9 +211,9 @@ Evaluates dataset quality across 5 dimensions (0-100 scale):
 |-----------|--------|----------------|
 | Pipeline Integrity | 15 pts | All pipeline stages executed successfully |
 | Content Safety | 20 pts | No PII, raw URLs, or attachment metadata in final data |
-| Cleaning & Dedup | 25 pts | Effective deduplication, no garbled fragments, canned detection |
+| Cleaning & Dedup | 25 pts | Effective deduplication, no garbled fragments, canned detection (regex-based garbling avoids false positives) |
 | Dataset Fitness | 25 pts | Valid train/valid split, min message length, system prompt injection |
-| Config Engineering | 15 pts | Sensible config values and toggles |
+| Config Engineering | 15 pts | Sensible config values and toggles (logging score reflects actual logger setup) |
 
 ```bash
 uv run python run_score.py
@@ -217,6 +226,7 @@ Passing threshold: **70/100**.
 Interactive CLI to test the fine-tuned model.
 
 - Loads base model + LoRA adapter
+- System prompt read from `inference.system_prompt` in config (matches training prompt)
 - Maintains conversation history
 - `exit` / `quit` / `Ctrl+C` to end
 
@@ -315,6 +325,7 @@ uv run python run_prepare.py
 | `max_new_tokens` | `512` | Max generation length |
 | `temperature` | `0.7` | Sampling temperature |
 | `top_p` | `0.9` | Nucleus sampling |
+| `system_prompt` | *(Thai support agent)* | System prompt (must match training prompt to avoid train/serve skew) |
 
 ---
 
@@ -330,6 +341,8 @@ uv run python run_prepare.py
 
 This repo follows an **agent-driven SDLC** — see [`.github/SDLC.md`](.github/SDLC.md) for the full workflow (risk tiers, self-healing review loops, nightly triage pipeline).
 
+- **Workflow guideline**: [`.github/WORKFLOW.md`](.github/WORKFLOW.md) — concrete step-by-step instructions for subagents (finding → issue → branch → worker → commit → PR → reviewer → merge).
+- **Project instructions**: [`AGENTS.md`](AGENTS.md) — auto-loaded by pi at startup, tells subagents how to work in this repo.
 - **CI**: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs syntax check + the full test suite on every PR to `main`.
 - **PR template**: [`.github/pull_request_template.md`](.github/pull_request_template.md) ensures every change has evidence attached.
 - **Issue template**: [`.github/ISSUE_TEMPLATE/agent_handoff.md`](.github/ISSUE_TEMPLATE/agent_handoff.md) enables self-contained subagent handoff.
