@@ -86,7 +86,7 @@ def _load_dataset(cfg: dict[str, Any], train_path: str | None = None, valid_path
         logger.error("train.jsonl not found at %s. Run run_prepare.py first.", train_path)
         raise FileNotFoundError(f"Missing training data: {train_path}")
 
-    logger.info("Loading dataset from %s", data_dir)
+    logger.info("Loading dataset from %s and %s", train_path, valid_path)
     dataset = load_dataset(
         "json",
         data_files={"train": train_path, "validation": valid_path},
