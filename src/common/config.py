@@ -7,7 +7,6 @@ from typing import Any
 import yaml
 from dotenv import load_dotenv
 
-
 # Resolve project root relative to this file
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 CONFIG_DIR = PROJECT_ROOT / "config"

@@ -9,8 +9,6 @@ import json
 import logging
 import os
 import re
-import sys
-from collections.abc import Sequence
 
 logger = logging.getLogger("src.score_dataset")
 
@@ -109,7 +107,11 @@ class DatasetScore:
     def _score_pipeline_integrity(self) -> float:
         """15 pts — conversion rate + file health."""
         score = 0.0
-        conv_rate = self.conv_count / (self.conv_count + self.skip_count) if (self.conv_count + self.skip_count) > 0 else 0
+        conv_rate = (
+            self.conv_count / (self.conv_count + self.skip_count)
+            if (self.conv_count + self.skip_count) > 0
+            else 0
+        )
 
         # 10 pts for conversion rate
         if conv_rate >= 0.98:
@@ -322,11 +324,21 @@ class DatasetScore:
                 ps.get("skip_count", 0)
                 or (self.total_raw - self.conv_count if self.total_raw else 0)
             )
-            self.duplicate_dropped = ps.get("duplicate_dropped", 0) or ps.get("duplicate_occurrences_dropped", 0)
-            self.broken_dropped = ps.get("broken_dropped", 0) or ps.get("broken_conversations_dropped", 0)
-            self.sentence_dropped = ps.get("sentence_dropped", 0) or ps.get("sentence_occurrences_dropped", 0)
-            self.canned_dropped = ps.get("canned_dropped", 0) or ps.get("canned_dominated_dropped", 0)
-            self.canned_stripped = ps.get("canned_stripped", 0) or ps.get("canned_suffix_stripped", 0)
+            self.duplicate_dropped = (
+                ps.get("duplicate_dropped", 0) or ps.get("duplicate_occurrences_dropped", 0)
+            )
+            self.broken_dropped = (
+                ps.get("broken_dropped", 0) or ps.get("broken_conversations_dropped", 0)
+            )
+            self.sentence_dropped = (
+                ps.get("sentence_dropped", 0) or ps.get("sentence_occurrences_dropped", 0)
+            )
+            self.canned_dropped = (
+                ps.get("canned_dropped", 0) or ps.get("canned_dominated_dropped", 0)
+            )
+            self.canned_stripped = (
+                ps.get("canned_stripped", 0) or ps.get("canned_suffix_stripped", 0)
+            )
 
         # If we still have zero counts but total_raw is set, infer
         if self.total_raw > 0 and self.skip_count == 0:
@@ -361,7 +373,9 @@ class DatasetScore:
                 "role_balance": {
                     "user": self.user_count,
                     "assistant": self.assistant_count,
-                    "user_ratio": round(self.user_count / max(self.user_count + self.assistant_count, 1), 3),
+                    "user_ratio": round(
+                        self.user_count / max(self.user_count + self.assistant_count, 1), 3
+                    ),
                 },
                 "pii_leaks": self.pii_leaks,
                 "url_leaks_count": len(self.url_leaks),
@@ -409,14 +423,14 @@ def score_dataset(
     train: list[dict] = []
     if os.path.exists(train_path):
         with open(train_path) as f:
-            train = [json.loads(l) for l in f if l.strip()]
+            train = [json.loads(line) for line in f if line.strip()]
     else:
         logger.warning("train.jsonl not found at %s", train_path)
 
     valid: list[dict] = []
     if os.path.exists(valid_path):
         with open(valid_path) as f:
-            valid = [json.loads(l) for l in f if l.strip()]
+            valid = [json.loads(line) for line in f if line.strip()]
     else:
         logger.warning("valid.jsonl not found at %s", valid_path)
 
@@ -447,15 +461,24 @@ def format_report(result: dict, verbose: bool = False) -> str:
     lines.append("-" * 62)
     m = result.get("metrics", {})
 
-    lines.append(f"  Conversations:     {m.get('conversation_count', '?'):>6d}  ({m.get('train_count', '?')} train + {m.get('valid_count', '?')} valid)")
+    lines.append(
+        f"  Conversations:     {m.get('conversation_count', '?'):>6d}"
+        f"  ({m.get('train_count', '?')} train + {m.get('valid_count', '?')} valid)"
+    )
     if m.get("skip_count"):
         lines.append(f"  Skipped:           {m['skip_count']:>6d}")
 
     turn = m.get("turn_stats", {})
-    lines.append(f"  Turns/conversation:  min={turn.get('min', '?')} avg={turn.get('avg', '?')} max={turn.get('max', '?')}")
+    lines.append(
+        f"  Turns/conversation:  min={turn.get('min', '?')}"
+        f" avg={turn.get('avg', '?')} max={turn.get('max', '?')}"
+    )
 
     rb = m.get("role_balance", {})
-    lines.append(f"  Role balance:        {rb.get('user', '?')} user / {rb.get('assistant', '?')} assistant  ({rb.get('user_ratio', '?')})")
+    lines.append(
+        f"  Role balance:        {rb.get('user', '?')} user /"
+        f" {rb.get('assistant', '?')} assistant  ({rb.get('user_ratio', '?')})"
+    )
 
     lines.append(f"  Avg message length:  {m.get('avg_content_length_chars', '?')} chars")
     lines.append(f"  Empty messages:      {m.get('empty_messages', '?')}")
@@ -477,7 +500,10 @@ def format_report(result: dict, verbose: bool = False) -> str:
         lines.append(f"  Canned dropped:      {dd.get('canned_dropped', '?')}")
 
     lines.append("")
-    lines.append(f"  {'★ PASS' if result['total'] >= 70 else '☆ NEEDS WORK':>30s}  (threshold: 70/100)")
+    lines.append(
+        f"  {'★ PASS' if result['total'] >= 70 else '☆ NEEDS WORK':>30s}"
+        "  (threshold: 70/100)"
+    )
     lines.append("=" * 62)
 
     return "\n".join(lines)

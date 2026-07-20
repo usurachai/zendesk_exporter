@@ -8,12 +8,10 @@ Functional Requirements:
   FR-305: Resume training
 """
 
-import argparse
-import sys
 from pathlib import Path
 from typing import Any
 
-from src.common.config import get_training_config, load_config
+from src.common.config import get_training_config
 from src.common.logger import get_logger
 
 logger = get_logger(__name__)
@@ -72,7 +70,11 @@ def _apply_lora(model: Any, cfg: dict[str, Any]) -> Any:
     return model
 
 
-def _load_dataset(cfg: dict[str, Any], train_path: str | None = None, valid_path: str | None = None) -> Any:
+def _load_dataset(
+    cfg: dict[str, Any],
+    train_path: str | None = None,
+    valid_path: str | None = None,
+) -> Any:
     """Load train/valid JSONL as HuggingFace Dataset — FR-302."""
     from datasets import load_dataset  # type: ignore[import-untyped]
 

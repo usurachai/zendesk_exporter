@@ -565,7 +565,6 @@ def generate_dataset(
     Returns:
         Summary dict with counts and output paths.
     """
-    raw_path = Path(raw_dir)
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -716,7 +715,11 @@ def _dedupe_exact(
         conv["conversation"] = filtered_turns
 
     if dropped:
-        logger.info("Dedupe: dropped %d duplicate message occurrences (keep <=%d)", dropped, max_copies)
+        logger.info(
+            "Dedupe: dropped %d duplicate message occurrences (keep <=%d)",
+            dropped,
+            max_copies,
+        )
 
     # Drop conversations that became single-turn (system + one user = no agent reply)
     # These are useless for training after their agent responses were deduplicated.
@@ -881,7 +884,11 @@ def _split_sentences(text: str) -> list[str]:
         # If URL ends with punctuation and next char is whitespace,
         # split the punctuation out — it's a sentence delimiter
         end = m.end()
-        while url and url[-1] in '.,;:!?)]' and (end >= len(text) or text[end:end+1] in (' ', '\n', '')):
+        while (
+            url
+            and url[-1] in ".,;:!?)]"
+            and (end >= len(text) or text[end:end+1] in (" ", "\n", ""))
+        ):
             url = url[:-1]
             end -= 1
         placeholders[key] = url
