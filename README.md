@@ -1,5 +1,7 @@
 # Zendesk AI Customer Support Fine-tuning Platform
 
+> CI: testing pipeline fix (PR #42)
+
 Fine-tune Qwen2.5-1.5B-Instruct on historical Zendesk Facebook Messenger conversations using LoRA (Unsloth) to automate Level-1 Thai customer support responses.
 
 **MVP — not a production chatbot.**
