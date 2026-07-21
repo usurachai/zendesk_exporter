@@ -38,8 +38,7 @@ fi
 
 # Sync dependencies
 echo "[vast_train] Installing dependencies..."
-uv sync
-uv pip install -r requirements-train.txt -q
+uv sync --extra train
 
 # Run training
 echo "[vast_train] Starting training..."
