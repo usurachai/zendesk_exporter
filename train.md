@@ -20,7 +20,7 @@ Fine-tune Qwen2.5-1.5B-Instruct on the prepared dataset (`data/train.jsonl` + `d
 Search for a cost-effective GPU with enough VRAM:
 
 ```bash
-vastai search offers 'cuda_arch >= 89 gpu_ram >= 16 num_gpus=1 reliability >= 0.95'
+vastai search offers 'compute_cap >= 890 gpu_ram >= 16 num_gpus=1 reliability >= 0.95'
 ```
 
 - **Recommended:** RTX 4090 (24 GB) or RTX 3090 — ~$0.30/hr
@@ -71,8 +71,7 @@ vastai exec <INSTANCE_ID> "
   tar xzf zendesk_exporter.tar.gz -C zendesk_exporter/ &&
   cd zendesk_exporter &&
   pip install uv -q &&
-  uv sync &&
-  uv pip install -r requirements-train.txt -q &&
+  uv sync --extra train &&
   uv run python run_train.py
 "
 ```
@@ -133,7 +132,7 @@ uv run python run_train.py --config /path/to/config.yaml --train /path/to/train.
 | Action | Effect |
 |--------|--------|
 | RTX 4090 (~$0.30/hr) | ~$0.15-0.30 per run |
-| Use `--disk 10` instead of 20 | Saves ~$0.001/hr |
+| Use `--disk 10` instead of 20 | Saves ~$0.001/hr (cosmetic) |
 | Pre-upload tarball before renting | Saves ~30s of billing |
 | Instance auto-stops when script exits | No over-billing |
 | Reduce `per_device_train_batch_size` | Lower VRAM = cheaper GPU tier |
@@ -145,7 +144,7 @@ uv run python run_train.py --config /path/to/config.yaml --train /path/to/train.
 | Symptom | Fix |
 |---------|-----|
 | `CUDA out of memory` | Reduce `per_device_train_batch_size` in config.yaml (4→2 or 1) |
-| `No module named unsloth` | Ensure `uv pip install -r requirements-train.txt` ran successfully |
+| `No module named unsloth` | Ensure `uv sync --extra train` ran successfully |
 | Instance doesn't stop | Instance is in "continuous" mode → `vastai destroy instance <ID>` manually |
 | `Connection refused` | Wait 30-60s for the instance to boot before `vastai exec` |
 | `uv: command not found` | Run `pip install uv` first (already in the script) |
