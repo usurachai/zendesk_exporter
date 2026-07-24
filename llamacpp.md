@@ -104,7 +104,9 @@ cd /path/to/llama-b10107-bin-ubuntu-x64
   -m /path/to/models/qwen-base-f16.gguf \
   --lora /path/to/models/adapter.gguf \
   -p "<im_start>system
-You are a Thai customer support agent. Respond politely in Thai.<im_end>" \
+You are a helpful, polite customer support agent for a Thai company.
+Follow the company's support SOP. Ask for missing information before
+troubleshooting. Escalate when appropriate. Respond in Thai.<im_end>" \
   -n 150 --temp 0.7 -t 4
 ```
 
