@@ -13,7 +13,12 @@ Fine-tune Qwen2.5-1.5B-Instruct on the prepared dataset (`data/train.jsonl` + `d
 
 ---
 
-## Quick Start (one-shot)
+## 🚀 Quick Start (one-shot, fully automated)
+
+Use `vast_run.sh` — a local orchestration script that handles the full lifecycle:
+**rent → upload → train → download weights → destroy instance**.
+
+No manual intervention needed. Run it and come back when it finishes.
 
 ### 1. Pick a GPU
 
@@ -27,9 +32,56 @@ vastai search offers 'compute_cap >= 890 gpu_ram >= 16 num_gpus=1 reliability >=
 - Qwen2.5-1.5B uses ~6-8 GB VRAM with 4-bit LoRA
 - Note the **instance ID** of your chosen offer
 
-### 2. Create the tarball (on your machine)
+### 2. Run (rent + train + download + destroy)
 
-Bundle the repo **without** raw data or git history:
+```bash
+./vast_run.sh --rent <INSTANCE_ID>
+```
+
+This single command:
+1. Creates the tarball automatically (if not already at `/tmp/zendesk_exporter.tar.gz`)
+2. Rents the instance with the pytorch image
+3. Waits for it to be ready
+4. Uploads the repo
+5. Runs training (~30-45 min on RTX 4090)
+6. Downloads the adapter weights to `./adapters/`
+7. Destroys the instance to stop billing
+
+**Cost:** ~$0.13-0.19 total for a 30-45 min run on RTX 4090.
+
+### 3. (Optional) Use the adapter
+
+The trained LoRA adapter is saved locally at:
+
+```
+adapters/lora_adapter/
+```
+
+You can load it for inference with:
+
+```python
+from unsloth import FastLanguageModel
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name="unsloth/Qwen2.5-1.5B-Instruct",
+    load_in_4bit=True,
+)
+model = FastLanguageModel.get_peft_model(model, ...)
+# or use PeftModel.from_pretrained(model, "./adapters/lora_adapter")
+```
+
+---
+
+## 🔧 Manual Workflow (step-by-step)
+
+If you prefer to run each step manually:
+
+### 1. Pick a GPU
+
+```bash
+vastai search offers 'compute_cap >= 890 gpu_ram >= 16 num_gpus=1 reliability >= 0.95'
+```
+
+### 2. Create the tarball (on your machine)
 
 ```bash
 cd /path/to/zendesk_exporter
@@ -38,6 +90,7 @@ tar czf /tmp/zendesk_exporter.tar.gz \
   --exclude=.git \
   --exclude=__pycache__ \
   --exclude='*.pyc' \
+  --exclude=.venv \
   .
 ```
 
@@ -62,47 +115,40 @@ vastai show instances
 vastai copy <INSTANCE_ID> /tmp/zendesk_exporter.tar.gz /workspace/
 ```
 
-### 5. Run training (auto-stops when done)
+### 5. Run training
 
 ```bash
-vastai exec <INSTANCE_ID> "
-  cd /workspace &&
-  mkdir -p zendesk_exporter &&
-  tar xzf zendesk_exporter.tar.gz -C zendesk_exporter/ &&
-  cd zendesk_exporter &&
-  pip install uv -q &&
-  uv sync --extra train &&
-  uv run python run_train.py
-"
+./vast_run.sh <INSTANCE_ID>
 ```
 
-**The instance stops automatically when the command exits** → no over-billing.
+This runs `vast_train.sh` on the instance, waits for completion, then downloads the adapter weights.
 
-Estimated runtime: ~30-45 minutes for 3 epochs on RTX 4090 (~$0.15-0.30 total).
-
-### 6. (Optional) Download the adapter before stopping
-
-If you want the adapter weights, **run this in a separate terminal** during training, or modify the script to upload to a cloud bucket:
+### 6. Destroy the instance
 
 ```bash
-vastai copy <INSTANCE_ID> /workspace/zendesk_exporter/adapters/ ./adapters/
 vastai destroy instance <INSTANCE_ID>
 ```
 
 ---
 
-## Alternative: Using `vast_train.sh`
+## 📦 Using `vast_train.sh` (on-instance script only)
 
-The repo includes [`vast_train.sh`](vast_train.sh) — a self-contained script that does steps 4-5:
+If you already have a running instance with the tarball uploaded, you can run the training script directly:
 
 ```bash
-# After renting the instance and uploading the tarball:
 vastai exec <INSTANCE_ID> "bash /workspace/zendesk_exporter/vast_train.sh"
+```
+
+The script compresses the trained adapter weights into `/workspace/adapters.tar.gz` on completion. Download them from your local machine:
+
+```bash
+vastai copy <INSTANCE_ID> /workspace/adapters.tar.gz ./adapters/
+vastai destroy instance <INSTANCE_ID>
 ```
 
 ---
 
-## Configuration
+## ⚙️ Configuration
 
 Edit [`config/config.yaml`](config/config.yaml) before training to adjust:
 
@@ -127,25 +173,25 @@ uv run python run_train.py --config /path/to/config.yaml --train /path/to/train.
 
 ---
 
-## Cost Optimization
+## 💰 Cost Optimization
 
 | Action | Effect |
 |--------|--------|
-| RTX 4090 (~$0.30/hr) | ~$0.15-0.30 per run |
-| Use `--disk 10` instead of 20 | Saves ~$0.001/hr (cosmetic) |
-| Pre-upload tarball before renting | Saves ~30s of billing |
-| Instance auto-stops when script exits | No over-billing |
+| RTX 4090 (~$0.30/hr) | ~$0.13-0.19 per run (30-45 min) |
+| Use `vast_run.sh --rent` | Auto-destroys instance → no over-billing |
+| Pre-create tarball before renting | Saves ~30s of billing |
 | Reduce `per_device_train_batch_size` | Lower VRAM = cheaper GPU tier |
 
 ---
 
-## Troubleshooting
+## 🔍 Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
 | `CUDA out of memory` | Reduce `per_device_train_batch_size` in config.yaml (4→2 or 1) |
 | `No module named unsloth` | Ensure `uv sync --extra train` ran successfully |
-| Instance doesn't stop | Instance is in "continuous" mode → `vastai destroy instance <ID>` manually |
+| Instance doesn't stop | `vastai destroy instance <ID>` manually |
 | `Connection refused` | Wait 30-60s for the instance to boot before `vastai exec` |
 | `uv: command not found` | Run `pip install uv` first (already in the script) |
 | Training is slow | Check GPU utilization: `vastai exec <ID> "nvidia-smi"` |
+| No weights downloaded | Check if training completed: `vastai exec <ID> "ls -la /workspace/adapters/"` |
