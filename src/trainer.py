@@ -209,7 +209,7 @@ def run_training(
         warmup_steps=warmup_steps,
         logging_steps=logging_steps,
         save_steps=save_steps,
-        evaluation_strategy="steps",
+        eval_strategy="steps",
         eval_steps=save_steps,
         save_total_limit=3,
         load_best_model_at_end=True,
