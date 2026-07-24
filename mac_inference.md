@@ -30,14 +30,14 @@ curl -L -o ~/models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
   https://huggingface.co/unsloth/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
 ```
 
-### 3. Download LoRA Adapter as GGUF
+### 3. Download and Convert LoRA Adapter
 
 ```bash
 # Clone llama.cpp for conversion scripts
 git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /tmp/llama-src
 
 # Install dependencies
-pip3 install torch transformers numpy sentencepiece protobuf huggingface_hub
+pip3 install huggingface_hub sentencepiece protobuf
 
 # Download adapter from HuggingFace
 python3 -c "
