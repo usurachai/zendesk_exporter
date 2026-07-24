@@ -152,11 +152,10 @@ echo "[vast_run] Starting training on instance $INSTANCE_ID..."
 echo "[vast_run] This will take ~30-45 minutes. Billing: ~\$0.13-0.19 for RTX 4090."
 echo "[vast_run] Training log:"
 echo "───────────────────────────────────────────────────────────────────────────────"
-vastai exec "$INSTANCE_ID" "bash $REMOTE_WORKSPACE/vast_train.sh"
-TRAIN_EXIT=$?
+vastai exec "$INSTANCE_ID" "bash $REMOTE_WORKSPACE/vast_train.sh" || TRAIN_EXIT=$?
 echo "───────────────────────────────────────────────────────────────────────────────"
 
-if [[ $TRAIN_EXIT -ne 0 ]]; then
+if [[ -n "${TRAIN_EXIT:-}" && $TRAIN_EXIT -ne 0 ]]; then
     echo "[vast_run] WARNING: Training exited with code $TRAIN_EXIT. Attempting to download partial weights..."
 fi
 
