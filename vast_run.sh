@@ -86,30 +86,35 @@ fi
 
 # --- Step 1: (Optional) Rent instance ---
 if $RENT_MODE; then
-    echo "[vast_run] Renting instance $INSTANCE_ID (disk=${DISK_GB}GB, image=${IMAGE})..."
-    vastai create instance "$INSTANCE_ID" \
+    echo "[vast_run] Renting instance from offer $INSTANCE_ID (disk=${DISK_GB}GB, image=${IMAGE})..."
+    CREATE_OUTPUT=$(vastai create instance "$INSTANCE_ID" \
         --image "$IMAGE" \
         --disk "$DISK_GB" \
-        --ssh
+        --ssh 2>&1)
+    echo "$CREATE_OUTPUT"
 
-    echo "[vast_run] Waiting for instance to be ready..."
-    for i in $(seq 1 30); do
+    # Extract the actual instance ID from the response (different from offer ID)
+    INSTANCE_ID=$(echo "$CREATE_OUTPUT" | grep -oP '"'"'"'new_contract'"'"'\s*:\s*\K[0-9]+' || echo "$INSTANCE_ID")
+    echo "[vast_run] Contract instance ID: $INSTANCE_ID"
+
+    echo "[vast_run] Waiting for instance to be ready (this may take 2-5min for image pull)..."
+    for i in $(seq 1 60); do
         STATUS=$(vastai show instances 2>/dev/null | grep "^$INSTANCE_ID" | awk '{print $3}' || true)
         if [[ "$STATUS" == "running" ]]; then
-            echo "[vast_run] Instance $INSTANCE_ID is running."
+            echo "[vast_run] Instance $INSTANCE_ID is running (after $((i * 5))s)."
             break
         fi
         if [[ "$STATUS" == "error" ]]; then
             echo "[vast_run] ERROR: Instance entered error state."
             exit 1
         fi
-        sleep 3
+        sleep 5
     done
 
     # Final check
     STATUS=$(vastai show instances 2>/dev/null | grep "^$INSTANCE_ID" | awk '{print $3}' || true)
     if [[ "$STATUS" != "running" ]]; then
-        echo "[vast_run] ERROR: Instance did not become running after 90s."
+        echo "[vast_run] ERROR: Instance did not become running after 5min."
         exit 1
     fi
 
