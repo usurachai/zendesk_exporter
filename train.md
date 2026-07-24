@@ -98,7 +98,7 @@ tar czf /tmp/zendesk_exporter.tar.gz \
 
 ```bash
 vastai create instance <INSTANCE_ID> \
-  --image pytorch/pytorch:2.4.0-cuda12.1-cudnn8-devel \
+  --image pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime \
   --disk 20 \
   --ssh
 ```

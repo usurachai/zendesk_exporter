@@ -36,7 +36,7 @@ REMOTE_WORKSPACE="/workspace/zendesk_exporter"
 RENT_MODE=false
 INSTANCE_ID=""
 DISK_GB=20
-IMAGE="pytorch/pytorch:2.4.0-cuda12.1-cudnn8-devel"
+IMAGE="pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime"
 
 # Parse args
 while [[ $# -gt 0 ]]; do
