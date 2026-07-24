@@ -5,14 +5,12 @@ set -euo pipefail
 # vast_train.sh — Run Unsloth LoRA fine-tuning on a vast.ai instance
 #
 # USAGE:
-#   This script is uploaded to a vast.ai instance and executed as the docker
-#   command. When training finishes, the process exits → instance stops →
-#   billing stops.
+#   This script runs on a vast.ai instance (uploaded via tarball, executed via
+#   vastai exec). After training, it compresses the adapter weights so the
+#   local vast_run.sh can download them efficiently.
 #
-# SETUP (run once from your local machine):
-#   1. tar czf zendesk_exporter.tar.gz --exclude=data/raw --exclude=.git \
-#        --exclude=__pycache__ --exclude='*.pyc' -C /path/to/zendesk_exporter .
-#   2. vastai copy <instance_id> ./zendesk_exporter.tar.gz /workspace/
+#   For the fully automated workflow (upload → train → download → cleanup),
+#   use vast_run.sh from your local machine instead.
 # =============================================================================
 
 echo "[vast_train] Starting setup..."
@@ -43,5 +41,14 @@ uv sync --extra train
 # Run training
 echo "[vast_train] Starting training..."
 uv run python run_train.py 2>&1
+
+# Compress adapter weights for faster download
+if [ -d "adapters" ] && [ "$(ls -A adapters/ 2>/dev/null)" ]; then
+    echo "[vast_train] Compressing adapter weights..."
+    tar czf /workspace/adapters.tar.gz -C /workspace/zendesk_exporter adapters/
+    echo "[vast_train] Adapter tarball created: /workspace/adapters.tar.gz ($(du -h /workspace/adapters.tar.gz | cut -f1))"
+else
+    echo "[vast_train] WARNING: No adapter weights found at adapters/."
+fi
 
 echo "[vast_train] Training complete. Exiting — instance will stop."
