@@ -111,14 +111,15 @@ def _format_example(example: dict[str, Any], tokenizer: Any, max_seq_length: int
     messages = example["messages"]
 
     # Tokenize prompt (everything before the last assistant response)
-    prompt = tokenizer.apply_chat_template(
+    # When tokenize=True, apply_chat_template returns a list of token IDs directly
+    prompt_ids = tokenizer.apply_chat_template(
         messages[:-1],
         tokenize=True,
         add_generation_prompt=True,
         truncation=True,
         max_length=max_seq_length,
     )
-    prompt_len = len(prompt["input_ids"])
+    prompt_len = len(prompt_ids)
 
     # Tokenize the full conversation (prompt + assistant response)
     text = tokenizer.apply_chat_template(
