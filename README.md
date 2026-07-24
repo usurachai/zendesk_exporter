@@ -4,6 +4,39 @@ Fine-tune Qwen2.5-1.5B-Instruct on historical Zendesk Facebook Messenger convers
 
 **MVP — not a production chatbot.**
 
+
+---
+
+## Trained Model
+
+The LoRA adapter is trained on Qwen2.5-1.5B-Instruct and available on HuggingFace:
+
+**[usurachai/zendesk-support-qwen2.5-1.5b-lora](https://huggingface.co/usurachai/zendesk-support-qwen2.5-1.5b-lora)**
+
+| Detail | Value |
+|--------|-------|
+| Base model | `unsloth/Qwen2.5-1.5B-Instruct` |
+| Training | 3 epochs, 24 steps, loss 2.35 → 1.69 |
+| Adapter size | ~71 MB (LoRA r=16) |
+| Language | Thai |
+
+### Load from HuggingFace
+
+```python
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
+
+base = AutoModelForCausalLM.from_pretrained("unsloth/Qwen2.5-1.5B-Instruct")
+model = PeftModel.from_pretrained(base, "usurachai/zendesk-support-qwen2.5-1.5b-lora")
+tokenizer = AutoTokenizer.from_pretrained("unsloth/Qwen2.5-1.5B-Instruct")
+```
+
+### Run locally
+
+- **MacBook M1**: See [mac_inference.md](mac_inference.md) (Ollama, llama.cpp, LM Studio)
+- **Linux CPU**: See [llamacpp.md](llamacpp.md) (llama.cpp with LoRA support)
+- **Remote GPU**: See [train.md](train.md) (vast.ai training + inference)
+
 ---
 
 ## Architecture
@@ -21,10 +54,11 @@ Zendesk Search API + Comments API
    run_score.py       →  quality report  (optional)
         │
         ▼
-   run_train.py       →  adapters/lora_adapter/
-        │
+   run_train.py       →  adapters/lora_adapter/  (via vast.ai GPU)
+        │                     see: train.md
         ▼
-   run_test.py        →  interactive CLI (→ Ollama for production)
+   run_test.py        →  interactive CLI
+                         see: llamacpp.md, mac_inference.md
 ```
 
 ---
@@ -35,8 +69,8 @@ Zendesk Search API + Comments API
 
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) (Python package & project manager)
-- CUDA-capable GPU (for training/inference)
 - Zendesk account with API access
+- [vast CLI](https://vast.ai/docs/cli) (for remote GPU training)
 
 ### 1. Install
 
@@ -84,10 +118,10 @@ uv run python run_prepare.py --analyze
 # Step 3 — Build dataset (after configuring filter_sentences)
 uv run python run_prepare.py
 
-# Step 4 — Fine-tune
-uv run python run_train.py
+# Step 4 — Fine-tune (on vast.ai GPU, see train.md)
+./vast_run.sh
 
-# Step 5 — Test interactively
+# Step 5 — Test interactively (see llamacpp.md or mac_inference.md)
 uv run python run_test.py
 
 # Run tests
@@ -139,6 +173,10 @@ zendesk_exporter/
 ├── run_score.py             # Entry point: dataset quality scorer
 ├── run_train.py             # Entry point: train
 ├── run_test.py              # Entry point: test
+├── vast_run.sh              # Remote training orchestrator (vast.ai)
+├── vast_train.sh            # Training script (runs inside vast.ai instance)
+├── llamacpp.md              # Inference guide: llama.cpp (Linux CPU)
+├── mac_inference.md         # Inference guide: MacBook M1 (Ollama/llama.cpp/LM Studio)
 ├── tests/
 │   ├── fixtures.py           # Sample Zendesk tickets for testing
 │   └── test_dataset.py       # 63 tests for dataset preparation
@@ -202,6 +240,8 @@ Fine-tunes Qwen2.5-1.5B-Instruct with LoRA using Unsloth.
 - Saves adapter to `adapters/lora_adapter/`
 - Supports resume from checkpoint
 
+**Remote training:** Use `./vast_run.sh` to orchestrate training on vast.ai GPU (rent → upload → train → download → destroy). See [train.md](train.md) for details.
+
 ### 4. Scorer (`run_score.py`)
 
 Evaluates dataset quality across 5 dimensions (0-100 scale):
@@ -222,12 +262,17 @@ Passing threshold: **70/100**.
 
 ### 5. Tester (`run_test.py`)
 
-Interactive CLI to test the fine-tuned model.
+Interactive CLI to test the fine-tuned model (requires GPU or CPU with enough RAM).
 
 - Loads base model + LoRA adapter
 - System prompt read from `inference.system_prompt` in config (matches training prompt)
 - Maintains conversation history
 - `exit` / `quit` / `Ctrl+C` to end
+
+**Other inference options:**
+- **llama.cpp** (CPU, Linux): [llamacpp.md](llamacpp.md) — convert adapter to GGUF, run with `llama-cli`
+- **MacBook M1**: [mac_inference.md](mac_inference.md) — Ollama, llama.cpp, LM Studio, or Python
+- **HuggingFace**: Load adapter directly from `usurachai/zendesk-support-qwen2.5-1.5b-lora`
 
 ---
 
