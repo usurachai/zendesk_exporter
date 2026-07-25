@@ -122,10 +122,12 @@ For T3 changes (security, auth, credentials):
 
 On review failure (defects found):
 
-1. Reviewer reports findings with evidence (file:line, test output).
+1. Reviewer reports findings with evidence (file:line, test output) via `gh pr review --request-changes`.
 2. Worker receives findings, applies minimal fix on the same branch.
 3. Worker pushes; PR is updated.
-4. Reviewer re-reviews.
+4. Reviewer re-reviews via `gh pr review --approve` or `--request-changes`.
+   A `COMMENTED` review does NOT satisfy the re-review requirement.
+   Merge requires an `APPROVED` review state.
 5. Repeat up to `MAX_REVIEW_ROUNDS` (default **3**).
 6. If loop exhausts → **auto-close PR** with diagnosis + **file new issue** for triage.
 
