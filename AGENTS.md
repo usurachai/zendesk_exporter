@@ -19,6 +19,10 @@ Failure to follow this order has caused workflow violations in the past.
       If no → STOP. Worker never reviews its own PR.
 - [ ] **AUDIT TRAIL**: Has the reviewer posted findings on the PR as a GitHub review comment?
       If no → The review is invisible. Reviewer must use `gh pr review`.
+- [ ] **RE-REVIEW**: After fixing reviewer findings, did the reviewer re-approve?
+      If no → STOP. Run the review cycle again. Merge requires an APPROVED review.
+      A `COMMENTED` review does not satisfy this requirement. If GitHub blocks
+      self-approval, verify the review body explicitly states approval before merging.
 
 > **Why this checklist exists:** Previous violations occurred where code was
 > changed without an issue, branch, or review. This checklist is the

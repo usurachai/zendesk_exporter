@@ -2,6 +2,7 @@
 - [ ] Issue created BEFORE any code was written (issue number below)
 - [ ] Branch created from `origin/main` (not `main`)
 - [ ] Every commit references the issue
+- [ ] Re-review: after fixing reviewer findings, reviewer re-approved before merge
 
 ## Related Issue
 Closes #

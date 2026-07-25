@@ -152,12 +152,19 @@ For T3 changes (security, auth, credentials):
 ### Step 7: Self-Healing Loop (if defects found)
 
 ```
-REVIEWER finds defects → reports with evidence → WORKER fixes → commits → pushes
-  → REVIEWER re-reviews → repeat up to 3 rounds
+REVIEWER finds defects → reports with evidence (--request-changes) → WORKER fixes → commits → pushes
+  → REVIEWER re-reviews → reports state (--approve or --request-changes) → repeat up to 3 rounds
   → EXHAUSTED → AUTO-CLOSE PR + file new issue for triage
 ```
 
-### Step 8: Merge
+**Important:** The reviewer must post a **new** `gh pr review` after each fix round (not just a comment).
+The PR must reach `APPROVED` state — a `COMMENTED` review does NOT satisfy the re-review requirement.
+
+If the reviewer cannot self-approve (GitHub blocks self-approval on own PRs), the orchestrator
+must inspect the review body and proceed only when the reviewer explicitly states "approved" or "no further issues" —
+never skip the re-review step just because GitHub blocks the API call.
+
+### Step 8: Merge (requires APPROVED review)
 
 | Tier | Action |
 |------|--------|
@@ -165,7 +172,12 @@ REVIEWER finds defects → reports with evidence → WORKER fixes → commits �
 | **T1, T2** | Auto-merge after CI + review pass |
 | **T3** | Auto-merge after two-model review + CI pass |
 
-**No human gates.** All routine work merges autonomously.
+**Prerequisite for ALL tiers:** The latest review must be in `APPROVED` state.
+- If the reviewer requested changes and the worker fixed them, a **re-review** is required.
+- A `COMMENTED` review does NOT satisfy this requirement.
+- If GitHub blocks self-approval (same user), the orchestrator must verify the review body explicitly states approval before merging.
+
+**No human gates.** All routine work merges autonomously — but the re-review cycle must complete.
 
 ---
 
