@@ -122,8 +122,14 @@ brew install llama.cpp
 ```bash
 mkdir -p ~/models
 
+# Option A: curl (simplest, follow redirects)
 curl -L -o ~/models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
-  https://huggingface.co/unsloth/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
+  https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
+
+# Option B: huggingface-cli (more reliable, handles auth)
+huggingface-cli download Qwen/Qwen2.5-1.5B-Instruct-GGUF \
+  qwen2.5-1.5b-instruct-q4_k_m.gguf \
+  --local-dir ~/models
 ```
 
 ### 3. Download Adapter and Convert to GGUF
@@ -254,5 +260,5 @@ huggingface-cli download unsloth/Qwen2.5-1.5B-Instruct --local-dir ./qwen-base
 
 **GGUF format** (~1 GB, for llama.cpp / Ollama):
 ```bash
-curl -LO https://huggingface.co/unsloth/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
+curl -LO https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
 ```
