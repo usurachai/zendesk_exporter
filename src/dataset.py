@@ -593,7 +593,7 @@ def generate_dataset(
         logger.warning("Dropped %d conversations with only one role", dropped)
 
     # FR-202: Random shuffle
-    rng = random.Random(shuffle_seed)
+    rng = random.Random(shuffle_seed)  # noqa: S311 — deterministic, not cryptographic
     rng.shuffle(conversations)
 
     # FR-201: Split dataset

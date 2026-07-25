@@ -1,3 +1,8 @@
+## Pre-flight Compliance
+- [ ] Issue created BEFORE any code was written (issue number below)
+- [ ] Branch created from `origin/main` (not `main`)
+- [ ] Every commit references the issue
+
 ## Related Issue
 Closes #
 
@@ -24,8 +29,7 @@ feat: implement <description> (fixes #NNN)
 ```
 
 ## Verification
-- [ ] Syntax check passed (`ast.parse` on all src files)
-- [ ] Tests passed (`uv run python -m pytest tests/ -v`)
+- [ ] Tests passed (`uv run python -m pytest tests/ -v --cov=src --cov-report=term`)
 - [ ] Lint passed (`uv run ruff check src/`)
 
 ## Evidence

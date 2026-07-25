@@ -11,7 +11,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -30,15 +30,12 @@ jobs:
         run: uv python install 3.11
 
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync --extra test --extra lint
 
       - name: Lint
         run: uv run ruff check src/
 
-      - name: Syntax check
-        run: |
-          uv run python -c "import ast, glob; [ast.parse(open(f).read()) for f in glob.glob('src/**/*.py', recursive=True)]"
-          echo "Syntax OK"
+      - name: Run tests with coverage
+        run: uv run python -m pytest tests/ -v --cov=src --cov-report=term
 
-      - name: Run tests
-        run: uv run python -m pytest tests/ -v
+
