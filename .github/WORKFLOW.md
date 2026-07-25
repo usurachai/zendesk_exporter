@@ -103,7 +103,7 @@ The reviewer must:
 4. **Check test quality**: Coverage, meaningful assertions, edge cases
 5. **Cite evidence**: Every finding must include test output, diff line, or CLI output
 6. **Classify risk tier**: DT1, DT2, T1, T2, or T3
-7. **Report findings**:
+7. **Report findings** (saved for PR comment):
 
 ```markdown
 ## Review
@@ -114,6 +114,30 @@ The reviewer must:
 - **Risk Tier**: DT1/DT2/T1/T2/T3
 - **Decision**: MERGE / SELF-HEAL
 ```
+
+8. **Post findings as GitHub PR review**:
+
+```bash
+# Build review body from findings above
+REVIEW_BODY=$(cat <<'REVIEW'
+## Review
+- **Risk Tier**: T1
+- **TDD Compliant**: Yes
+- **Tests Pass**: Yes
+- **Correct**: ...
+- **Issues**: none
+- **Decision**: MERGE
+REVIEW
+)
+
+# For approval (T1, DT1, DT2 — merge):
+gh pr review <NNN> --approve --body "$REVIEW_BODY"
+
+# For changes requested (defects found, self-heal needed):
+gh pr review <NNN> --request-changes --body "$REVIEW_BODY"
+```
+
+**Why this matters:** Without posting to the PR, reviewer findings are invisible — they live only in ephemeral local artifacts. Posting creates a permanent audit trail on GitHub that anyone can view.
 
 **Reviewer NEVER edits code.** If defects are found, report them for the worker to fix.
 

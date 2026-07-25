@@ -17,6 +17,8 @@ Failure to follow this order has caused workflow violations in the past.
       If no → STOP. Run tests. Fix any failures.
 - [ ] **REVIEW**: Have I delegated the PR to `reviewer` (not reviewing my own)?
       If no → STOP. Worker never reviews its own PR.
+- [ ] **AUDIT TRAIL**: Has the reviewer posted findings on the PR as a GitHub review comment?
+      If no → The review is invisible. Reviewer must use `gh pr review`.
 
 > **Why this checklist exists:** Previous violations occurred where code was
 > changed without an issue, branch, or review. This checklist is the
@@ -43,7 +45,7 @@ FINDING → ISSUE (w/ test plan) → BRANCH → TDD CYCLE → PR → CROSS-MODEL
 | Role | Agent | Model | What they do |
 |------|-------|-------|-------------|
 | Implementation | `worker` | **Model A** | TDD cycle → commit → push → PR |
-| PR Review | `reviewer-1` | **Model B** | Review diff → check TDD → classify tier |
+| PR Review | `reviewer-1` | **Model B** | Review diff → check TDD → classify tier → post to PR |
 | T3 Review | `reviewer-2` | **Model C** | Second opinion for critical changes |
 
 ### Risk Tiers (validation depth, not human permission)
