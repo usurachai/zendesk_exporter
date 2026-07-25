@@ -1,0 +1,46 @@
+Starting LoRA fine-tuning...
+This requires a GPU with CUDA support and significant RAM.
+
+🦥 Unsloth: Will patch your computer to enable 2x faster free finetuning.
+🦥 Unsloth Zoo will now patch everything to make training faster!
+2026-07-25 10:05:27,267 | INFO     | src.trainer | Loading base model: unsloth/Qwen2.5-1.5B-Instruct (4bit=True)
+==((====))==  Unsloth 2026.7.5: Fast Qwen2 patching. Transformers: 5.5.0.
+   \\   /|    NVIDIA GeForce RTX 4090. Num GPUs = 1. Max memory: 47.373 GB. Platform: Linux.
+O^O/ \_/ \    Torch: 2.11.0+cu130. CUDA: 8.9. CUDA Toolkit: 13.0. Triton: 3.6.0
+\        /    Bfloat16 = TRUE. FA [Xformers = 0.0.35. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+Loading weights:   0%|          | 0/338 [00:00<?, ?it/s]Loading weights:  14%|█▍        | 49/338 [00:00<00:00, 480.93it/s]Loading weights:  30%|██▉       | 100/338 [00:00<00:00, 492.36it/s]Loading weights:  47%|████▋     | 160/338 [00:00<00:00, 531.99it/s]Loading weights:  66%|██████▋   | 224/338 [00:00<00:00, 573.83it/s]Loading weights:  83%|████████▎ | 282/338 [00:00<00:00, 573.97it/s]Loading weights: 100%|██████████| 338/338 [00:00<00:00, 545.52it/s]
+2026-07-25 10:06:06,453 | INFO     | src.trainer | Model loaded successfully.
+2026-07-25 10:06:06,454 | INFO     | src.trainer | Applying LoRA: r=16, alpha=16, targets=['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate_proj', 'up_proj', 'down_proj']
+Unsloth: Dropout = 0 is supported for fast patching. You are using dropout = 0.1.
+Unsloth will patch all other layers, except LoRA matrices, causing a performance hit.
+Unsloth 2026.7.5 patched 28 layers with 0 QKV layers, 0 O layers and 0 MLP layers.
+2026-07-25 10:06:12,668 | INFO     | src.trainer | Loading dataset from data/train.jsonl and data/valid.jsonl
+2026-07-25 10:06:14,596 | INFO     | src.trainer | Dataset loaded: 1808 train / 206 validation
+2026-07-25 10:06:18,363 | INFO     | src.trainer | Train samples: 1808, Valid samples: 206
+2026-07-25 10:06:18,790 | INFO     | src.trainer | Starting training: 2 epochs, lr=0.0002
+The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'bos_token_id': None}.
+Traceback (most recent call last):
+  File "/tmp/zendesk_exporter/run_train.py", line 52, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/tmp/zendesk_exporter/run_train.py", line 39, in main
+    result = run_training(
+             ^^^^^^^^^^^^^
+  File "/tmp/zendesk_exporter/src/trainer.py", line 234, in run_training
+    trainer.train(resume_from_checkpoint=cfg.get("resume_from_checkpoint"))  # FR-305
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/zendesk_exporter/.venv/lib/python3.11/site-packages/unsloth/trainer.py", line 844, in _train_with_reset
+    return _orig_train(*train_args, **train_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/zendesk_exporter/unsloth_compiled_cache/UnslothSFTTrainer.py", line 101, in wrapper
+    output = f(self, *args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/zendesk_exporter/.venv/lib/python3.11/site-packages/transformers/trainer.py", line 1413, in train
+    state = TrainerState.load_from_json(os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME))
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/zendesk_exporter/.venv/lib/python3.11/site-packages/transformers/trainer_callback.py", line 152, in load_from_json
+    with open(json_path, encoding="utf-8") as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'adapters/checkpoint-100/trainer_state.json'

@@ -1,0 +1,31 @@
+INFO | Loaded pipeline stats from data/score_stats.json
+
+==============================================================
+  DATASET QUALITY SCORE:  90 / 100
+==============================================================
+
+  Pipeline Integrity     10.0/15   ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  Content Safety         20.0/20   ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  Cleaning Dedup         20.0/25   ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  Dataset Fitness        25.0/25   ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  Config Engineering     15.0/15   ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+--------------------------------------------------------------
+  KEY METRICS
+--------------------------------------------------------------
+  Conversations:       2014  (1808 train + 206 valid)
+  Skipped:               25
+  Turns/conversation:  min=2 avg=6.3 max=76
+  Role balance:        6391 user / 6281 assistant  (0.504)
+  Avg message length:  135.5 chars
+  Empty messages:      0
+  PII leaks:           0
+  URL leaks:           945
+  Duplicates dropped:  180
+  Broken dropped:      38
+  Sentence dropped:    1356
+  Canned stripped:     3041
+  Canned dropped:      23
+
+                          ★ PASS  (threshold: 70/100)
+==============================================================

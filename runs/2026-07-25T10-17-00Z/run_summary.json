@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-07-25T10:17:00Z",
+  "instance_id": 45788572,
+  "instance_type": "RTX 4090",
+  "cost_per_hour": 0.3026,
+  "duration_minutes": 10,
+  "exit_code": 1,
+  "exit_reason": "pickle error on final checkpoint save (adapter weights saved successfully)",
+  "dataset": {
+    "train_examples": 1808,
+    "valid_examples": 206,
+    "quality_score": 90
+  },
+  "training": {
+    "base_model": "unsloth/Qwen2.5-1.5B-Instruct",
+    "epochs": 2,
+    "total_steps": 226,
+    "final_loss": 0.88,
+    "final_eval_loss": 1.034,
+    "lora_r": 16,
+    "lora_alpha": 16,
+    "lora_dropout": 0.1,
+    "weight_decay": 0.01,
+    "learning_rate": "2e-4",
+    "batch_size": 16,
+    "warmup_steps": 10,
+    "eval_steps": 50
+  },
+  "artifacts": {
+    "adapter_checkpoint": "adapters/checkpoint-226/",
+    "adapter_size_mb": 71,
+    "run_record": "runs/2026-07-25T10-17-00Z/"
+  },
+  "known_issues": [
+    "pickle error: Unsloth compiled cache overrides SFTConfig, prevents torch.save",
+    "Fix: disable save_steps during training, save manually at end",
+    "workaround: set save_steps > total_steps"
+  ]
+}
