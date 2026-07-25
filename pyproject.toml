@@ -21,6 +21,7 @@ train = [
 ]
 test = [
     "pytest>=9.0.0",
+    "pytest-cov>=6.0.0",
 ]
 lint = [
     "ruff>=0.5.0",
@@ -32,4 +33,4 @@ line-length = 100
 src = ["src"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "W"]
+select = ["E", "F", "I", "S", "W"]

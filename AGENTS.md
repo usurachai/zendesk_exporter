@@ -1,8 +1,30 @@
 # Repository Instructions — zendesk_exporter
 
+## ⚠️ Pre-Flight Checklist (READ BEFORE ANY CHANGE)
+
+Before writing a single line of code, verify EVERY item on this checklist.
+Failure to follow this order has caused workflow violations in the past.
+
+- [ ] **ISSUE FIRST**: Have I created a GitHub issue describing the change?
+      If no → STOP. Create the issue. No code without an issue.
+- [ ] **BRANCH**: Am I on a branch from `origin/main` (not `main` itself)?
+      If no → STOP. Create the branch. Never commit to main.
+- [ ] **ISSUE REF**: Does every commit reference the issue (`fixes #NNN`)?
+      If no → STOP. Add the reference.
+- [ ] **TDD**: For `src/*.py` changes — did I write the test BEFORE the code?
+      If no → Revert. Write the failing test first (RED phase).
+- [ ] **TESTS PASS**: Have I run `uv run python -m pytest tests/ -v`?
+      If no → STOP. Run tests. Fix any failures.
+- [ ] **REVIEW**: Have I delegated the PR to `reviewer` (not reviewing my own)?
+      If no → STOP. Worker never reviews its own PR.
+
+> **Why this checklist exists:** Previous violations occurred where code was
+> changed without an issue, branch, or review. This checklist is the
+> process-level guardrail. Treat it as mandatory reading before every action.
+
 ## Mandatory GitHub Workflow
 
-All code changes MUST follow this workflow — read `.github/WORKFLOW.md` for the full step-by-step:
+Once the pre-flight checklist passes, follow this workflow — read `.github/WORKFLOW.md` for the full step-by-step:
 
 ```
 FINDING → ISSUE (w/ test plan) → BRANCH → TDD CYCLE → PR → CROSS-MODEL REVIEW → MERGE
