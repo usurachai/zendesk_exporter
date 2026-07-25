@@ -1,0 +1,29 @@
+# Code Owners — zendesk_exporter
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# This file defines code ownership for review requests.
+# Requires branch protection with "Require review from Code Owners" enabled.
+#
+# Pattern syntax:
+#   *              — default owner (everything not matched)
+#   src/*.py       — Python source code
+#   .github/       — CI/CD and workflow files
+#   config/        — Configuration files
+
+# Default: all changes require review
+* @usurachai
+
+# Source code — critical, requires careful review
+src/ @usurachai
+
+# CI/CD — infrastructure changes
+.github/ @usurachai
+
+# Config — training and export settings
+config/ @usurachai
+
+# Documentation — can be reviewed by anyone
+*.md @usurachai
+
+# Scripts — training and export scripts
+*.sh @usurachai
