@@ -1,24 +1,51 @@
 name: README Sync Check
 
-on:
-  pull_request:
-    paths:
-      - 'config/config.yaml'
-      - 'src/**/*.py'
-      - 'run_*.py'
+on: pull_request
 
 jobs:
   check-readme:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Check README was updated
+      - name: Check README was updated alongside trigger changes
         run: |
-          if git diff --name-only origin/main...HEAD | grep -qE '(config/config\.yaml|src/.*\.py|run_.*\.py)' ; then
-            if ! git diff --name-only origin/main...HEAD | grep -q README.md ; then
-              echo "::warning::Config or source files changed but README.md was not updated."
-              echo "Please update README.md to reflect your changes."
+          # Pattern of files that, when changed, should trigger a README.md update
+          # This covers: source code, config, CI workflows, agent docs, shell scripts,
+          # and project metadata. Changes to .gitignore, uv.lock, data/, adapters/,
+          # .coverage, or internal retro notes do NOT trigger.
+          TRIGGER_PATTERN='(src/.*\.py|run_.*\.py|config/.*\.yaml|\.github/workflows/.*\.yml|\.github/WORKFLOW\.md|\.github/SDLC\.md|AGENTS\.md|pyproject\.toml|vast_.*\.sh|train\.md|llamacpp\.md|mac_inference\.md|spec\.md)'
+
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD)
+
+          TRIGGERED=false
+          while IFS= read -r file; do
+            if echo "$file" | grep -qE "$TRIGGER_PATTERN"; then
+              TRIGGERED=true
+              break
             fi
+          done <<< "$CHANGED_FILES"
+
+          if [ "$TRIGGERED" = false ]; then
+            echo "No trigger files changed. README check skipped."
+            exit 0
           fi
-          echo "README sync check complete."
+
+          if echo "$CHANGED_FILES" | grep -qx 'README.md'; then
+            echo "README.md was updated. ✓"
+            exit 0
+          fi
+
+          echo "::error::Trigger files changed but README.md was NOT updated."
+          echo ""
+          echo "Changed trigger file(s):"
+          while IFS= read -r file; do
+            if echo "$file" | grep -qE "$TRIGGER_PATTERN"; then
+              echo "  - $file"
+            fi
+          done <<< "$CHANGED_FILES"
+          echo ""
+          echo "Please update README.md to reflect your changes, then commit it."
+          exit 1
