@@ -196,6 +196,8 @@ def run_training(
     warmup_steps = cfg.get("warmup_steps", 5)
     logging_steps = cfg.get("logging_steps", 1)
     save_steps = cfg.get("save_steps", 100)
+    eval_steps = cfg.get("eval_steps", save_steps)
+    weight_decay = cfg.get("weight_decay", 0.0)
 
     # Determine precision: bf16 recommended on Ampere+ GPUs, fallback to fp16
     use_bf16 = cfg.get("bf16", True)
@@ -210,7 +212,8 @@ def run_training(
         logging_steps=logging_steps,
         save_steps=save_steps,
         eval_strategy="steps",
-        eval_steps=save_steps,
+        eval_steps=eval_steps,
+        weight_decay=weight_decay,
         save_total_limit=3,
         load_best_model_at_end=True,
         bf16=use_bf16,
