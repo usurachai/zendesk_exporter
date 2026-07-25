@@ -54,7 +54,7 @@ training:
     bf16: true
     lora_r: 16
     lora_alpha: 16
-    lora_dropout: 0.0
+    lora_dropout: 0.1
     target_modules:
         [
             "q_proj",
@@ -66,13 +66,15 @@ training:
             "down_proj",
         ]
     use_rslora: false
+    weight_decay: 0.01
     learning_rate: 2.0e-4
-    num_epochs: 3
+    num_epochs: 2
     per_device_train_batch_size: 4
     gradient_accumulation_steps: 4
-    warmup_steps: 5
+    warmup_steps: 10
     logging_steps: 1
     save_steps: 100
+    eval_steps: 50
     output_dir: "adapters"
     resume_from_checkpoint: null
 
