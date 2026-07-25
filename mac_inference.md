@@ -139,8 +139,8 @@ huggingface-cli download unsloth/Qwen2.5-1.5B-Instruct --local-dir ~/models/qwen
 # Clone converter scripts
 git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /tmp/llama-src
 
-# Install converter deps
-pip install huggingface_hub sentencepiece protobuf torch numpy
+# Install converter deps (transformers required by convert_lora_to_gguf.py)
+pip install transformers huggingface_hub sentencepiece protobuf torch numpy
 
 # Convert adapter
 python3 /tmp/llama-src/convert_lora_to_gguf.py \
@@ -153,12 +153,11 @@ python3 /tmp/llama-src/convert_lora_to_gguf.py \
 ### 4. Run with LoRA
 
 ```bash
-# Interactive chat
+# Interactive chat (interactive mode auto-enabled when chat template is available)
 llama-cli \
   -m ~/models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
   --lora ~/models/adapter-lora.gguf \
-  --chat-template chatml \
-  -i \
+  --color \
   -t 8 \
   --temp 0.7
 
@@ -174,8 +173,7 @@ llama-server \
 |------|---------|
 | `-m` | Base model GGUF file |
 | `--lora` | Adapter GGUF file |
-| `--chat-template chatml` | Qwen chat format |
-| `-i` | Interactive mode |
+| `--color` | Colorize output (prompt vs generation) |
 | `-t 8` | CPU threads (M1 has 8 cores) |
 | `--temp 0.7` | Generation temperature |
 
