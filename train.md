@@ -195,3 +195,27 @@ uv run python run_train.py --config /path/to/config.yaml --train /path/to/train.
 | `uv: command not found` | Run `pip install uv` first (already in the script) |
 | Training is slow | Check GPU utilization: `vastai exec <ID> "nvidia-smi"` |
 | No weights downloaded | Check if training completed: `vastai exec <ID> "ls -la /workspace/adapters/"` |
+
+---
+
+## 📋 Training Run Archive
+
+Every training run via `vast_run.sh` now saves a complete record under
+`runs/<TIMESTAMP>/`. This preserves everything needed to reproduce or
+investigate the result later:
+
+| File | Contents |
+|------|----------|
+| `run_summary.json` | Timestamp, duration, exit code, train/valid counts |
+| `config.yaml` | Snapshot of config at training time |
+| `score_report.txt` | Dataset quality score (before training) |
+| `training_output.log` | Full stdout from vast_train.sh |
+| `trainer_state.json` | Per-step loss + eval loss curve |
+
+**Why this matters:**
+- Compare loss curves across runs to spot overfitting
+- Reproduce any training session exactly (same config + same data)
+- Debug "why did the model get worse?" without re-training
+- Audit trail: know exactly what was trained, when, and on what data
+
+See `runs/README.md` for details.
