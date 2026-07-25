@@ -1,17 +1,20 @@
-# GitHub Workflow — Subagent Instructions
+# GitHub Workflow — Subagent Instructions (TDD + Cross-Model Review)
 
-This document defines the **mandatory step-by-step workflow** that all subagents must follow when doing GitHub-related work in this repository.
+This document defines the **mandatory step-by-step workflow** that all subagents must follow.
 
-## Core Principle
+## Core Principles
 
-**Worker does the code. Reviewer does the review. Never both in one agent.**
+1. **Worker does the code. Reviewer does the review. Never both in one agent.**
+2. **Worker and reviewer use DIFFERENT LLM models** (cross-model adversarial review).
+3. **TDD for code changes**: Tests before implementation for `src/*.py`.
+4. **No human blockers**: All routine work merges autonomously.
 
 ---
 
 ## Workflow Steps
 
 ```
-FINDING → GITHUB ISSUE → BRANCH → WORKER CODE → COMMIT → PR → REVIEWER REVIEW → MERGE
+FINDING → ISSUE (w/ test plan) → BRANCH → TDD CYCLE → PR → CROSS-MODEL REVIEW → MERGE
 ```
 
 ### Step 1: Finding → GitHub Issue
@@ -19,133 +22,149 @@ FINDING → GITHUB ISSUE → BRANCH → WORKER CODE → COMMIT → PR → REVIEW
 When a finding is discovered (by scout, oracle, or manual):
 
 1. **Create a GitHub issue** using `gh issue create` with:
-   - Clear title with severity prefix: `HIGH:`, `MEDIUM:`, `LOW:`, `INFO:`
+   - Clear title with type prefix: `fix:`, `feat:`, `chore:`, `docs:`
    - Description with root cause, file:line references, impact
+   - **Testable acceptance criteria** (what tests must pass)
+   - **Test plan** (what tests to write and why)
    - Proposed fix approach
-   - Acceptance criteria (checkboxes)
-   - Verification steps
-   - Risk tier: T1 (Safe) / T2 (Notable) / T3 (Critical)
+   - Risk tier: DT1 (Docs) / DT2 (Config) / T1 (Code) / T2 (New Code) / T3 (Critical)
 
-2. **Issue format** — use `.github/ISSUE_TEMPLATE/agent_handoff.md` structure:
-   ```
-   ## Description
-   ## Root Cause
-   ## Impact
-   ## Proposed Fix
-   ## Risk Tier
-   ## Acceptance Criteria
-   - [ ] ...
-   ## Verification Steps
-   ```
+2. **Issue format** — use `.github/ISSUE_TEMPLATE/agent_handoff.md` structure
 
 ### Step 2: Issue → Branch
 
 Create a branch from `origin/main` named:
 ```
 fix/issue-<NNN>-<kebab-short-description>
-```
-or
-```
 feat/issue-<NNN>-<kebab-short-description>
-```
-or
-```
 chore/issue-<NNN>-<kebab-short-description>
+docs/issue-<NNN>-<kebab-short-description>
 ```
 
 **Never commit directly to `main`.**
 
-### Step 3: Code Changes (WORKER ONLY)
+### Step 3: TDD Cycle (WORKER ONLY — Model A)
 
-**Only the `worker` subagent makes code changes.** The worker must:
+**Only the `worker` subagent makes code changes.** The worker follows TDD for `src/*.py` changes.
 
-1. Read the GitHub issue for full context
-2. Read the relevant source files
-3. Apply the minimal correct change
-4. Verify with tests: `uv run python -m pytest tests/ -v`
+#### For Code Changes (`src/*.py`)
 
-### Step 4: Commit
-
-Commit with a descriptive message referencing the issue:
 ```
-git add <files>
-git commit -m "<type>: <description> (fixes #<NNN>)"
+RED     → Write failing test(s) that capture acceptance criteria
+          Test MUST fail initially (proves it tests something)
+          Commit: "test: add failing test for <description> (refs #NNN)"
+
+GREEN   → Write minimal code to make tests pass
+          No extra features — just enough to pass
+          Commit: "feat: implement <description> (fixes #NNN)"
+          OR    "fix: <description> (fixes #NNN)"
+
+REFACTOR → Clean up code if needed, tests must still pass
+           Commit: "refactor: clean up <description> (refs #NNN)"
+```
+
+#### For Other Changes
+
+| Type | Validation |
+|------|-----------|
+| Docs (`.md`) | Write accurately, reviewer checks |
+| Config (`.yaml`) | Ensure defaults load, reviewer checks |
+| Scripts (`.sh`) | Run shellcheck, dry-run if possible |
+
+### Step 4: Push + Open PR
+
+Push the branch and create a PR:
+```bash
 git push -u origin <branch-name>
-```
-
-### Step 5: Open PR
-
-Create a PR using `gh pr create`:
-```
 gh pr create \
   --base main \
   --head <branch-name> \
   --title "<type>: <description> (fixes #<NNN>)" \
-  --body "## Description\n...\nCloses #<NNN>"
+  --body "## Description
+...
+Closes #<NNN>"
 ```
 
 The PR body must include:
 - Description of changes
 - Risk tier classification
-- Verification steps
+- Test evidence (commit log showing test before code)
 - Reference to the issue: `Closes #<NNN>`
 
-### Step 6: PR Review (REVIEWER ONLY)
+### Step 5: Cross-Model Review (REVIEWER — Model B)
 
-**Only the `reviewer` subagent reviews PRs.** The reviewer must:
+**The reviewer uses a DIFFERENT LLM than the worker.** This is adversarial review.
 
-1. Read the diff: `gh pr diff <NNN>` or `git diff main...<branch>`
-2. Read the relevant source files
-3. Verify each acceptance criterion from the issue
-4. Run tests: `uv run python -m pytest tests/ -v`
-5. Classify the risk tier (T1/T2/T3)
-6. Report findings:
+The reviewer must:
 
-```
+1. **Check TDD compliance**: Verify test commit precedes implementation commit
+2. **Read the diff**: `gh pr diff <NNN>` or `git diff main...<branch>`
+3. **Run tests**: `uv run python -m pytest tests/ -v`
+4. **Check test quality**: Coverage, meaningful assertions, edge cases
+5. **Cite evidence**: Every finding must include test output, diff line, or CLI output
+6. **Classify risk tier**: DT1, DT2, T1, T2, or T3
+7. **Report findings**:
+
+```markdown
 ## Review
-- Correct: what is already good (with evidence)
-- Fixed: issue, location, and resolution (if fix applied)
-- Blocker: critical issue that must be resolved before proceeding
-- Note: observation, risk, or follow-up item
+- **TDD Compliant**: Yes/No (test commit before code commit)
+- **Tests Pass**: Yes/No (pytest output)
+- **Correct**: what is already good (with evidence)
+- **Issues**: file:line — description (with evidence)
+- **Risk Tier**: DT1/DT2/T1/T2/T3
+- **Decision**: MERGE / SELF-HEAL
 ```
 
 **Reviewer NEVER edits code.** If defects are found, report them for the worker to fix.
 
+### Step 6: T3 Two-Model Consensus (if T3)
+
+For T3 changes (security, auth, credentials):
+
+1. Reviewer-1 (Model B) reviews → PASS/FAIL
+2. If PASS, Reviewer-2 (Model C) reviews → PASS/FAIL
+3. Both PASS = auto-merge. Either FAIL = self-heal loop.
+
 ### Step 7: Self-Healing Loop (if defects found)
 
 ```
-REVIEWER finds defects → reports to worker → WORKER fixes → commits → pushes
-  → REVIEWER re-reviews → repeat up to 3 rounds → ESCALATE to human
+REVIEWER finds defects → reports with evidence → WORKER fixes → commits → pushes
+  → REVIEWER re-reviews → repeat up to 3 rounds
+  → EXHAUSTED → AUTO-CLOSE PR + file new issue for triage
 ```
 
 ### Step 8: Merge
 
 | Tier | Action |
 |------|--------|
-| **T1 — Safe** | Auto-merge after CI + review pass |
-| **T2 — Notable** | Pause → notify human → human approves merge |
-| **T3 — Critical** | Pause → notify human → human must review + approve |
+| **DT1, DT2** | Auto-merge after review pass |
+| **T1, T2** | Auto-merge after CI + review pass |
+| **T3** | Auto-merge after two-model review + CI pass |
+
+**No human gates.** All routine work merges autonomously.
 
 ---
 
 ## Agent Role Assignments
 
-| Role | Agent | Responsibility |
-|------|-------|---------------|
-| **Discovery** | `scout` | Find issues, gather context |
-| **Planning** | `planner` | Verify findings, create issue, plan fix |
-| **Implementation** | `worker` | Branch → code → commit → push → PR |
-| **Review** | `reviewer` | PR review → tier classification → report |
-| **Validation** | `oracle` | Decision consistency check (escalation only) |
-| **Merge** | Human | Approve T2/T3 merges |
+| Role | Agent | Model | Responsibility |
+|------|-------|-------|----------------|
+| **Discovery** | `scout` | Hy3 (free) | Find issues, gather context |
+| **Planning** | `planner` | MiMo-V2.5 | Verify findings, create issue + test plan |
+| **Implementation** | `worker` | **Model A** (Claude) | TDD cycle → commit → push → PR |
+| **Review** | `reviewer-1` | **Model B** (GPT-4o) | PR review → tier classification |
+| **T3 Review** | `reviewer-2` | **Model C** (Gemini) | Second opinion for T3 only |
+| **Validation** | `oracle` | MiMo-V2.5 | Decision consistency (escalation only) |
 
 ## Rules
 
 1. **Worker never reviews its own PR.** Always delegate to `reviewer`.
-2. **Reviewer never edits code.** Only reads and reports.
-3. **Always branch from `origin/main`.** Never from another feature branch.
-4. **Always reference the issue** in commit messages and PRs.
-5. **Always run tests** before committing and before approving.
-6. **T1 merges are automatic** after CI + review pass. T2/T3 need human.
-7. **Self-heal up to 3 rounds** then escalate to human.
-8. **PR description must be self-contained** — another agent should understand it without reading the issue.
+2. **Worker and reviewer use DIFFERENT models.** This is adversarial review.
+3. **Reviewer never edits code.** Only reads and reports with evidence.
+4. **Always branch from `origin/main`.** Never from another feature branch.
+5. **Always reference the issue** in commit messages and PRs.
+6. **TDD for code**: Test commit must precede implementation commit.
+7. **Always run tests** before committing and before approving.
+8. **Evidence required**: Every review finding must cite a source artifact.
+9. **No human gates**: All routine work merges autonomously.
+10. **Self-heal max 3 rounds**: Then auto-close + new issue.

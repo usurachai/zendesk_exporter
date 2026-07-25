@@ -1,7 +1,7 @@
 ---
 name: Agent Handoff Issue
-about: Self-contained bug/feature spec for subagent implementation
-title: "[fix/feat/chore]: <short description>"
+about: Self-contained bug/feature spec for subagent implementation (TDD-aware)
+title: "[fix/feat/chore/docs]: <short description>"
 labels: [triage]
 assignees: ""
 ---
@@ -27,6 +27,23 @@ assignees: ""
 ## Impact
 <!-- Who/what is affected. Severity: blocker / warning / nit. -->
 
+## Risk Tier
+<!-- DT1 (Docs) / DT2 (Config/Scripts) / T1 (Code with tests) / T2 (New code) / T3 (Critical) -->
+- Tier: `T1`
+- Reason: <!-- why this tier -->
+
+## Testable Acceptance Criteria
+<!-- What tests must pass for this issue to be considered done? -->
+- [ ] `test_module.py::test_case_1` passes
+- [ ] `test_module.py::test_case_2` passes
+- [ ] No existing tests break (`uv run python -m pytest tests/ -v`)
+
+## Test Plan
+<!-- What tests must the worker write BEFORE implementation? -->
+<!-- For docs/config/scripts, describe validation approach instead. -->
+- [ ] `test_foo.py::test_bar` — verifies <behavior>
+- [ ] `test_foo.py::test_edge_case` — covers <edge case>
+
 ## Proposed Fix
 <!-- Concrete, minimal change. Include the exact edit if known. -->
 ```python
@@ -34,14 +51,10 @@ assignees: ""
 # after
 ```
 
-## Acceptance Criteria
-- [ ] Criterion 1
-- [ ] Criterion 2
-
 ## Verification Steps
 <!-- Commands the worker must run BEFORE committing. -->
 ```bash
-uv run python -m pytest tests/
+uv run python -m pytest tests/ -v
 ```
 
 ## Notes / Constraints
