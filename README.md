@@ -106,6 +106,24 @@ ZENDESK_API_TOKEN=your_api_token
 
 Override defaults in `config/config.yaml` as needed (date ranges, channel ID, agent names, cleanup toggles, LoRA params).
 
+#### Base Model Configuration
+
+The base model is configurable via three layers (highest priority first):
+
+```bash
+# 1. CLI flag (highest priority)
+uv run python run_train.py --base_model unsloth/Qwen2.5-7B-Instruct
+
+# 2. Environment variable
+ZENDESK_BASE_MODEL=unsloth/Qwen2.5-7B-Instruct uv run python run_train.py
+
+# 3. Edit config/config.yaml (default behavior)
+# training:
+#     base_model: "unsloth/Qwen2.5-7B-Instruct"
+```
+
+Supported models include any Unsloth-compatible HuggingFace model (Qwen2.5, Llama, Mistral, Gemma).
+
 ### 3. Run the pipeline
 
 ```bash

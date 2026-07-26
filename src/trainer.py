@@ -151,6 +151,7 @@ def run_training(
     config_path: str | None = None,
     train_path: str | None = None,
     valid_path: str | None = None,
+    base_model: str | None = None,
 ) -> dict[str, Any]:
     """Execute LoRA fine-tuning.
 
@@ -158,11 +159,16 @@ def run_training(
         config_path: Optional override for config YAML.
         train_path: Optional override path to train.jsonl.
         valid_path: Optional override path to valid.jsonl.
+        base_model: Optional override for base model name.
 
     Returns:
         Summary dict with training results.
     """
-    cfg = get_training_config()
+    cfg = get_training_config(config_path)
+
+    # Override base_model if provided via CLI
+    if base_model:
+        cfg["base_model"] = base_model
 
     # Step 1: Load model + tokenizer — FR-301
     model, tokenizer = _load_model_and_tokenizer(cfg)

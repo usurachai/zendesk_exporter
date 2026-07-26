@@ -7,6 +7,9 @@ from typing import Any
 import yaml
 from dotenv import load_dotenv
 
+# Default base model for training and inference
+DEFAULT_BASE_MODEL = "unsloth/Qwen2.5-1.5B-Instruct"
+
 # Resolve project root relative to this file
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 CONFIG_DIR = PROJECT_ROOT / "config"
@@ -44,6 +47,13 @@ def _merge_secrets(cfg: dict[str, Any], env: dict[str, str]) -> dict[str, Any]:
 
     # HuggingFace token
     cfg.setdefault("hf_token", env.get("HF_TOKEN"))
+
+    # Base model override via environment variable
+    base_model_env = env.get("ZENDESK_BASE_MODEL")
+    if base_model_env:
+        for section in ("training", "inference"):
+            cfg.setdefault(section, {})["base_model"] = base_model_env
+
     return cfg
 
 
@@ -88,3 +98,54 @@ def get_training_config(config_path: str | None = None) -> dict[str, Any]:
 def get_inference_config() -> dict[str, Any]:
     """Return inference section of config."""
     return load_config().get("inference", {})
+
+
+def get_base_model(section: str = "training") -> str:
+    """Return base model for the given section (training or inference).
+
+    Priority: config YAML > DEFAULT_BASE_MODEL
+    (env var ZENDESK_BASE_MODEL is applied in _merge_secrets)
+    """
+    cfg = load_config()
+    return cfg.get(section, {}).get("base_model", DEFAULT_BASE_MODEL)
+
+
+def _reset_config() -> None:
+    """Clear the config cache. Useful for testing."""
+    global _config
+    _config = None
+
+
+def validate_model_config(
+    training_cfg: dict[str, Any],
+    inference_cfg: dict[str, Any],
+) -> list[str]:
+    """Validate model configuration and return warnings.
+
+    Args:
+        training_cfg: Training config section.
+        inference_cfg: Inference config section.
+
+    Returns:
+        List of warning messages.
+
+    Raises:
+        ValueError: If base_model is empty.
+    """
+    warnings = []
+    training_model = training_cfg.get("base_model", "")
+    inference_model = inference_cfg.get("base_model", "")
+
+    if not training_model or not training_model.strip():
+        raise ValueError("training.base_model cannot be empty")
+    if not inference_model or not inference_model.strip():
+        raise ValueError("inference.base_model cannot be empty")
+
+    if training_model != inference_model:
+        warnings.append(
+            f"Training base_model ({training_model}) differs from "
+            f"inference base_model ({inference_model}). "
+            "The LoRA adapter is tied to the base model — mismatch will cause load failure."
+        )
+
+    return warnings

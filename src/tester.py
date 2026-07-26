@@ -89,17 +89,22 @@ def _generate_response(
 # Interactive CLI — FR-403, FR-404
 # ---------------------------------------------------------------
 
-def run_interactive(config_path: str | None = None) -> None:
+def run_interactive(config_path: str | None = None, base_model: str | None = None) -> None:
     """Start an interactive chat session — FR-403, FR-404.
 
     Args:
         config_path: Optional override path to config YAML.
+        base_model: Optional override for base model name.
     """
     cfg = get_inference_config()
     if config_path:
         from src.common.config import load_config
 
         cfg = load_config(config_path).get("inference", {})
+
+    # Override base_model if provided via CLI
+    if base_model:
+        cfg["base_model"] = base_model
 
     print("=" * 60)
     print("  Zendesk AI Customer Support — Interactive Tester")

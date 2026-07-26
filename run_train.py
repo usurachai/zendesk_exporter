@@ -30,6 +30,11 @@ def main() -> int:
         default=None,
         help="Override path to valid.jsonl",
     )
+    parser.add_argument(
+        "--base_model",
+        default=None,
+        help="Override base model (e.g., unsloth/Qwen2.5-7B-Instruct)",
+    )
     args = parser.parse_args()
 
     print("Starting LoRA fine-tuning...")
@@ -40,6 +45,7 @@ def main() -> int:
         config_path=args.config,
         train_path=args.train,
         valid_path=args.valid,
+        base_model=args.base_model,
     )
 
     print(f"\nTraining {result['status']}!")

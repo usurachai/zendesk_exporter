@@ -19,9 +19,14 @@ def main() -> None:
         default=None,
         help="Path to config YAML (default: config/config.yaml)",
     )
+    parser.add_argument(
+        "--base_model",
+        default=None,
+        help="Override base model (e.g., unsloth/Qwen2.5-7B-Instruct)",
+    )
     args = parser.parse_args()
 
-    run_interactive(config_path=args.config)
+    run_interactive(config_path=args.config, base_model=args.base_model)
 
 
 if __name__ == "__main__":
