@@ -162,7 +162,7 @@ def run_training(
     Returns:
         Summary dict with training results.
     """
-    cfg = get_training_config()
+    cfg = get_training_config(config_path)
 
     # Step 1: Load model + tokenizer — FR-301
     model, tokenizer = _load_model_and_tokenizer(cfg)
