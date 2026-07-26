@@ -179,6 +179,7 @@ zendesk_exporter/
 ├── mac_inference.md         # Inference guide: MacBook M1 (Ollama/llama.cpp/LM Studio)
 ├── tests/
 │   ├── fixtures.py           # Sample Zendesk tickets for testing
+│   ├── test_config.py        # Config loading and path forwarding tests
 │   └── test_dataset.py       # 63 tests for dataset preparation
 ├── .env.example             # Required secrets template
 ├── requirements.txt         # Core deps (export + dataset)
@@ -327,7 +328,7 @@ Outputs a per-dimension quality report and final score (passing: 70/100).
 **Test suite:**
 ```bash
 uv run python -m pytest tests/ -v
-# 63 tests — dataset builder, cleanup, dedup, scoring
+# 65 tests — dataset builder, cleanup, dedup, config, scoring
 ```
 
 **Sentence filtering workflow:**
