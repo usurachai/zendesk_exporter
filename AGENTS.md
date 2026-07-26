@@ -52,6 +52,31 @@ FINDING → ISSUE (w/ test plan) → BRANCH → TDD CYCLE → PR → CROSS-MODEL
 | PR Review | `reviewer-1` | **Model B** | Review diff → check TDD → classify tier → post to PR |
 | T3 Review | `reviewer-2` | **Model C** | Second opinion for critical changes |
 
+### Agent Communication (Intercom)
+Agents can communicate with each other in real-time via intercom. See `docs/INTERCOM.md` for full documentation.
+
+**Quick Reference:**
+```typescript
+// See all connected sessions
+intercom({ action: "list" })
+
+// Send a message (non-blocking)
+intercom({ action: "send", to: "worker", message: "..." })
+
+// Ask a question (blocks until reply)
+const reply = await intercom({ action: "ask", to: "worker", message: "..." })
+
+// Reply to incoming question
+intercom({ action: "reply", message: "..." })
+```
+
+**Key Rules:**
+1. Name sessions with `/name` for easy targeting
+2. Use `send` for non-blocking communication
+3. Use `ask` only when you need an answer before continuing
+4. Include reply instructions when expecting a response
+5. Check `list` before sending to verify target exists
+
 ### Risk Tiers (validation depth, not human permission)
 | Tier | Examples | Validation |
 |------|----------|-----------|
