@@ -63,13 +63,40 @@ REFACTOR → Clean up code if needed, tests must still pass
            Commit: "refactor: clean up <description> (refs #NNN)"
 ```
 
-#### For Other Changes
+#### For Config/Docs Changes (DT2 — Lightweight Path)
 
-| Type | Validation |
-|------|-----------|
-| Docs (`.md`) | Write accurately, reviewer checks |
-| Config (`.yaml`) | Ensure defaults load, reviewer checks |
-| Scripts (`.sh`) | Run shellcheck, dry-run if possible |
+| Step | Required? | Notes |
+|------|-----------|-------|
+| GitHub Issue | Optional | Skip for value-only; required for new keys |
+| Branch | Yes | From origin/main |
+| TDD | **No** | No src/*.py changes |
+| Tests | Yes | `uv run python -m pytest tests/ -v` — no regressions |
+| Lint | Yes | `uv run ruff check src/` — unchanged code passes |
+| Review | Yes | DT2: YAML validity + logical values |
+| Re-review | No | If initial review approves |
+
+**Example config-only change:**
+```bash
+# 1. Branch from main
+git checkout -b config/update-base-model
+
+# 2. Make config change
+# Edit config/config.yaml
+
+# 3. Run tests (ensure nothing broke)
+uv run python -m pytest tests/ -v
+
+# 4. Commit (issue optional for value changes)
+git add config/config.yaml
+git commit -m "config: update base model to 7B"
+
+# 5. Push and create PR
+git push -u origin config/update-base-model
+gh pr create --base main --head config/update-base-model --title "config: Update base model" --body "..."
+
+# 6. Delegate to reviewer (DT2 = lightweight review)
+# 7. Merge after APPROVED review
+```
 
 ### Step 4: Push + Open PR
 
