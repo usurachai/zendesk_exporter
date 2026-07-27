@@ -5,13 +5,14 @@
 Before writing a single line of code, verify EVERY item on this checklist.
 Failure to follow this order has caused workflow violations in the past.
 
+### For Code Changes (`src/*.py`) — Full Checklist
 - [ ] **ISSUE FIRST**: Have I created a GitHub issue describing the change?
       If no → STOP. Create the issue. No code without an issue.
 - [ ] **BRANCH**: Am I on a branch from `origin/main` (not `main` itself)?
       If no → STOP. Create the branch. Never commit to main.
 - [ ] **ISSUE REF**: Does every commit reference the issue (`fixes #NNN`)?
       If no → STOP. Add the reference.
-- [ ] **TDD**: For `src/*.py` changes — did I write the test BEFORE the code?
+- [ ] **TDD**: Did I write the test BEFORE the code?
       If no → Revert. Write the failing test first (RED phase).
 - [ ] **TESTS PASS**: Have I run `uv run python -m pytest tests/ -v`?
       If no → STOP. Run tests. Fix any failures.
@@ -26,6 +27,21 @@ Failure to follow this order has caused workflow violations in the past.
 - [ ] **MERGE GATE**: Is the latest review in `APPROVED` state?
       If no → STOP. Do not merge. Check `gh pr view <NNN> --json reviews`.
       A `COMMENTED` or `CHANGES_REQUESTED` review does NOT satisfy this requirement.
+
+### For Config/Docs Changes (`config/*.yaml`, `.md`, `.sh`) — Lightweight Path
+- [ ] **BRANCH**: Am I on a branch from `origin/main` (not `main` itself)?
+      If no → STOP. Create the branch. Never commit to main.
+- [ ] **TESTS PASS**: Have I run `uv run python -m pytest tests/ -v`?
+      If no → STOP. Run tests. Fix any failures.
+- [ ] **REVIEW**: Have I delegated the PR to `reviewer` (not reviewing my own)?
+      If no → STOP. Worker never reviews its own PR.
+- [ ] **MERGE GATE**: Is the latest review in `APPROVED` state?
+      If no → STOP. Do not merge.
+
+**Optional for DT2:**
+- [ ] **ISSUE**: Optional for value-only changes; required for new config keys
+- [ ] **TDD**: Skip (no `src/*.py` changes)
+- [ ] **RE-REVIEW**: Not required if initial review approves
 
 > **Why this checklist exists:** Previous violations occurred where code was
 > changed without an issue, branch, or review. This checklist is the
