@@ -10,7 +10,7 @@ Functional Requirements:
 from pathlib import Path
 from typing import Any
 
-from src.common.config import get_inference_config
+from src.common.config import DEFAULT_BASE_MODEL, get_inference_config
 from src.common.logger import get_logger
 
 logger = get_logger(__name__)
@@ -24,7 +24,7 @@ def _load_model_for_inference(cfg: dict[str, Any]) -> Any:
         logger.error("Unsloth not installed. Run: pip install unsloth")
         raise
 
-    base_model = cfg.get("base_model", "unsloth/Qwen2.5-1.5B-Instruct")
+    base_model = cfg.get("base_model", DEFAULT_BASE_MODEL)
     adapter_dir = cfg.get("adapter_dir", "adapters/lora_adapter")
     max_seq_length = cfg.get("max_seq_length", 2048)
 

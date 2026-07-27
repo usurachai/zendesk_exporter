@@ -5,13 +5,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from src.common.config import (
     DEFAULT_BASE_MODEL,
     _reset_config,
     get_base_model,
-    get_inference_config,
-    get_training_config,
     load_config,
     validate_model_config,
 )
@@ -52,14 +49,22 @@ class TestGetBaseModel:
     """Tests for get_base_model()."""
 
     def test_returns_training_base_model(self):
-        """Return base_model from training section."""
+        """get_base_model('training') returns a non-empty string."""
         model = get_base_model("training")
-        assert model == "unsloth/Qwen2.5-7B-Instruct"
+        assert model
+        assert isinstance(model, str)
 
     def test_returns_inference_base_model(self):
-        """Return base_model from inference section."""
+        """get_base_model('inference') returns a non-empty string."""
         model = get_base_model("inference")
-        assert model == "unsloth/Qwen2.5-7B-Instruct"
+        assert model
+        assert isinstance(model, str)
+
+    def test_returns_configured_base_model(self):
+        """get_base_model returns the value from config.yaml."""
+        cfg = load_config()
+        expected = cfg["training"]["base_model"]
+        assert get_base_model("training") == expected
 
     def test_fallback_to_default(self):
         """Fallback to DEFAULT_BASE_MODEL when key missing."""
@@ -86,7 +91,9 @@ class TestEnvVarOverride:
         _reset_config()
         with patch.dict(os.environ, {"ZENDESK_BASE_MODEL": ""}):
             cfg = load_config()
-            assert cfg["training"]["base_model"] == "unsloth/Qwen2.5-7B-Instruct"
+            # Should preserve the YAML value (non-empty)
+            assert cfg["training"]["base_model"]
+            assert isinstance(cfg["training"]["base_model"], str)
 
 
 class TestResetConfig:

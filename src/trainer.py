@@ -11,7 +11,7 @@ Functional Requirements:
 from pathlib import Path
 from typing import Any
 
-from src.common.config import get_training_config
+from src.common.config import DEFAULT_BASE_MODEL, get_training_config
 from src.common.logger import get_logger
 
 logger = get_logger(__name__)
@@ -27,7 +27,7 @@ def _load_model_and_tokenizer(cfg: dict[str, Any]) -> tuple[Any, Any]:
         )
         raise
 
-    base_model = cfg.get("base_model", "unsloth/Qwen2.5-1.5B-Instruct")
+    base_model = cfg.get("base_model", DEFAULT_BASE_MODEL)
     max_seq_length = cfg.get("max_seq_length", 2048)
     load_in_4bit = cfg.get("load_in_4bit", True)
 
