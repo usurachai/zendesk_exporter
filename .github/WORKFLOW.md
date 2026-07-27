@@ -170,11 +170,15 @@ never skip the re-review step just because GitHub blocks the API call.
 
 Before merging, verify the review state:
 ```bash
-# Check if latest review is APPROVED
-gh pr view <NNN> --json reviews --jq '.reviews[] | select(.state == "APPROVED") | .state'
+# Check if LATEST review is APPROVED (sort by submittedAt descending, take first)
+LATEST_REVIEW=$(gh pr view <NNN> --json reviews --jq '.reviews | sort_by(.submittedAt) | reverse | .[0].state')
 
-# If no APPROVED review exists, STOP. Do not merge.
-# If only COMMENTED or CHANGES_REQUESTED reviews exist, STOP. Do not merge.
+if [ "$LATEST_REVIEW" != "APPROVED" ]; then
+  echo "ERROR: Latest review is not APPROVED. Cannot merge."
+  echo "Latest review state: $LATEST_REVIEW"
+  exit 1
+fi
+echo "Latest review is APPROVED. Proceeding with merge."
 ```
 
 | Tier | Action |
@@ -193,13 +197,13 @@ gh pr view <NNN> --json reviews --jq '.reviews[] | select(.state == "APPROVED") 
 **ENFORCEMENT:**
 ```bash
 # Safe merge command that checks for approval first
-REVIEW_STATE=$(gh pr view <NNN> --json reviews --jq '.reviews[0].state')
-if [ "$REVIEW_STATE" != "APPROVED" ]; then
-  echo "ERROR: No APPROVED review. Cannot merge."
-  echo "Current review state: $REVIEW_STATE"
+LATEST_REVIEW=$(gh pr view <NNN> --json reviews --jq '.reviews | sort_by(.submittedAt) | reverse | .[0].state')
+if [ "$LATEST_REVIEW" != "APPROVED" ]; then
+  echo "ERROR: Latest review is not APPROVED. Cannot merge."
+  echo "Latest review state: $LATEST_REVIEW"
   exit 1
 fi
-echo "Review approved. Proceeding with merge."
+echo "Latest review is APPROVED. Proceeding with merge."
 gh pr merge <NNN> --squash --admin
 ```
 
