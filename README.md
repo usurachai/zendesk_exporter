@@ -124,6 +124,8 @@ ZENDESK_BASE_MODEL=unsloth/Qwen2.5-7B-Instruct uv run python run_train.py
 
 Supported models include any Unsloth-compatible HuggingFace model (Qwen2.5, Llama, Mistral, Gemma).
 
+> **Note**: Config value changes (like switching base_model) do NOT require test updates. Tests are decoupled from specific config values.
+
 ### 3. Run the pipeline
 
 ```bash
