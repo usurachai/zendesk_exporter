@@ -54,12 +54,12 @@ class TestGetBaseModel:
     def test_returns_training_base_model(self):
         """Return base_model from training section."""
         model = get_base_model("training")
-        assert model == "unsloth/Qwen2.5-1.5B-Instruct"
+        assert model == "unsloth/Qwen2.5-7B-Instruct"
 
     def test_returns_inference_base_model(self):
         """Return base_model from inference section."""
         model = get_base_model("inference")
-        assert model == "unsloth/Qwen2.5-1.5B-Instruct"
+        assert model == "unsloth/Qwen2.5-7B-Instruct"
 
     def test_fallback_to_default(self):
         """Fallback to DEFAULT_BASE_MODEL when key missing."""
@@ -86,7 +86,7 @@ class TestEnvVarOverride:
         _reset_config()
         with patch.dict(os.environ, {"ZENDESK_BASE_MODEL": ""}):
             cfg = load_config()
-            assert cfg["training"]["base_model"] == "unsloth/Qwen2.5-1.5B-Instruct"
+            assert cfg["training"]["base_model"] == "unsloth/Qwen2.5-7B-Instruct"
 
 
 class TestResetConfig:
