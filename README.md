@@ -15,7 +15,7 @@ The LoRA adapter is trained on Qwen2.5-1.5B-Instruct and available on HuggingFac
 
 | Detail | Value |
 |--------|-------|
-| Base model | `unsloth/Qwen2.5-1.5B-Instruct` |
+| Base model | `unsloth/Qwen2.5-7B-Instruct` (default) |
 | Training | 3 epochs, 24 steps, loss 2.35 → 1.69 |
 | Adapter size | ~71 MB (LoRA r=16) |
 | Language | Thai |
@@ -26,9 +26,9 @@ The LoRA adapter is trained on Qwen2.5-1.5B-Instruct and available on HuggingFac
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 
-base = AutoModelForCausalLM.from_pretrained("unsloth/Qwen2.5-1.5B-Instruct")
+base = AutoModelForCausalLM.from_pretrained("unsloth/Qwen2.5-7B-Instruct")
 model = PeftModel.from_pretrained(base, "usurachai/zendesk-support-qwen2.5-1.5b-lora")
-tokenizer = AutoTokenizer.from_pretrained("unsloth/Qwen2.5-1.5B-Instruct")
+tokenizer = AutoTokenizer.from_pretrained("unsloth/Qwen2.5-7B-Instruct")
 ```
 
 ### Run locally
@@ -366,7 +366,7 @@ uv run python run_prepare.py
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `base_model` | `unsloth/Qwen2.5-1.5B-Instruct` | HuggingFace model ID |
+| `base_model` | `unsloth/Qwen2.5-7B-Instruct` | HuggingFace model ID |
 | `max_seq_length` | `2048` | Token context window |
 | `load_in_4bit` | `true` | 4-bit quantization |
 | `lora_r` | `16` | LoRA rank |
@@ -383,7 +383,7 @@ uv run python run_prepare.py
 | Key | Default | Description |
 |-----|---------|-------------|
 | `adapter_dir` | `adapters/lora_adapter` | LoRA adapter path |
-| `base_model` | `unsloth/Qwen2.5-1.5B-Instruct` | Base model for inference |
+| `base_model` | `unsloth/Qwen2.5-7B-Instruct` | Base model for inference |
 | `max_new_tokens` | `512` | Max generation length |
 | `temperature` | `0.7` | Sampling temperature |
 | `top_p` | `0.9` | Nucleus sampling |
