@@ -8,7 +8,7 @@ import yaml
 from dotenv import load_dotenv
 
 # Default base model for training and inference
-DEFAULT_BASE_MODEL = "unsloth/Qwen2.5-1.5B-Instruct"
+DEFAULT_BASE_MODEL = "unsloth/Qwen2.5-7B-Instruct"
 
 # Resolve project root relative to this file
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
