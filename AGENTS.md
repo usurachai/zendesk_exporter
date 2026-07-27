@@ -23,6 +23,9 @@ Failure to follow this order has caused workflow violations in the past.
       If no → STOP. Run the review cycle again. Merge requires an APPROVED review.
       A `COMMENTED` review does not satisfy this requirement. If GitHub blocks
       self-approval, verify the review body explicitly states approval before merging.
+- [ ] **MERGE GATE**: Is the latest review in `APPROVED` state?
+      If no → STOP. Do not merge. Check `gh pr view <NNN> --json reviews`.
+      A `COMMENTED` or `CHANGES_REQUESTED` review does NOT satisfy this requirement.
 
 > **Why this checklist exists:** Previous violations occurred where code was
 > changed without an issue, branch, or review. This checklist is the
