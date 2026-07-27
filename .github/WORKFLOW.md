@@ -166,6 +166,21 @@ never skip the re-review step just because GitHub blocks the API call.
 
 ### Step 8: Merge (requires APPROVED review)
 
+**PRE-MERGE VERIFICATION (MANDATORY):**
+
+Before merging, verify the review state:
+```bash
+# Check if LATEST review is APPROVED (sort by submittedAt descending, take first)
+LATEST_REVIEW=$(gh pr view <NNN> --json reviews --jq '.reviews | sort_by(.submittedAt) | reverse | .[0].state')
+
+if [ "$LATEST_REVIEW" != "APPROVED" ]; then
+  echo "ERROR: Latest review is not APPROVED. Cannot merge."
+  echo "Latest review state: $LATEST_REVIEW"
+  exit 1
+fi
+echo "Latest review is APPROVED. Proceeding with merge."
+```
+
 | Tier | Action |
 |------|--------|
 | **DT1, DT2** | Auto-merge after review pass |
@@ -178,6 +193,19 @@ never skip the re-review step just because GitHub blocks the API call.
 - If GitHub blocks self-approval (same user), the orchestrator must verify the review body explicitly states approval before merging.
 
 **No human gates.** All routine work merges autonomously — but the re-review cycle must complete.
+
+**ENFORCEMENT:**
+```bash
+# Safe merge command that checks for approval first
+LATEST_REVIEW=$(gh pr view <NNN> --json reviews --jq '.reviews | sort_by(.submittedAt) | reverse | .[0].state')
+if [ "$LATEST_REVIEW" != "APPROVED" ]; then
+  echo "ERROR: Latest review is not APPROVED. Cannot merge."
+  echo "Latest review state: $LATEST_REVIEW"
+  exit 1
+fi
+echo "Latest review is APPROVED. Proceeding with merge."
+gh pr merge <NNN> --squash --admin
+```
 
 ---
 

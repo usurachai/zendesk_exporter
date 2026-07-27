@@ -405,7 +405,7 @@ uv run python run_prepare.py
 
 This repo follows an **agent-driven SDLC** — see [`.github/SDLC.md`](.github/SDLC.md) for the full workflow (risk tiers, self-healing review loops, nightly triage pipeline).
 
-- **Workflow guideline**: [`.github/WORKFLOW.md`](.github/WORKFLOW.md) — concrete step-by-step instructions for subagents (finding → issue → branch → worker → commit → PR → reviewer → merge).
+- **Workflow guideline**: [`.github/WORKFLOW.md`](.github/WORKFLOW.md) — concrete step-by-step instructions for subagents (finding → issue → branch → worker → commit → PR → reviewer → merge). Includes mandatory pre-merge verification requiring APPROVED review before merge.
 - **Project instructions**: [`AGENTS.md`](AGENTS.md) — auto-loaded by pi at startup, tells subagents how to work in this repo.
 - **Agent communication**: [`docs/INTERCOM.md`](docs/INTERCOM.md) — comprehensive guide for real-time agent-to-agent communication via intercom. See also [`docs/INTERCOM_CHEATSHEET.md`](docs/INTERCOM_CHEATSHEET.md) for quick reference.
 - **CI**: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs syntax check + the full test suite on every PR to `main`.
