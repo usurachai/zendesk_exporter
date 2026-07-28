@@ -52,7 +52,7 @@ Source: Historical Zendesk Facebook Messenger (Sunshine Conversations) conversat
 | LoRA alpha | 16 |
 | LoRA dropout | 0.1 |
 | Target modules | q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj |
-| Trainable params | ~50,593,792 / 7,620,000,000 (**~0.66%**) |
+| Trainable params | 40,370,176 / 7,620,000,000 (**~0.53%**) |
 | Precision | bf16 (Ampere+ GPU) |
 
 ### Training Hyperparameters
