@@ -64,6 +64,24 @@ This single command:
 
 **Cost:** ~$0.15-0.25 total for a 30-45 min run on RTX 4090.
 
+### 7B Training Performance (Actual)
+
+| Metric | Value |
+|--------|-------|
+| Model | Qwen2.5-7B-Instruct (4-bit LoRA) |
+| GPU | RTX 4090 (24 GB VRAM) |
+| Dataset | 1,808 train / 206 validation |
+| Epochs | 2 (226 steps) |
+| Duration | **28 minutes** |
+| Cost | **~$0.19** ($0.4144/hr) |
+| Training loss | 2.18 → 0.90 |
+| Eval loss | 1.21 → 1.01 → 0.94 → 0.90 |
+| Adapter size | 161 MB |
+
+**Loss curve (eval, per 50 steps):** `1.211 → 1.009 → 0.9368 → 0.9063 → 0.8999`
+
+Training time is dominated by the 7B model forward pass (~2.67s/step). The 1.5B model trains ~2× faster on the same GPU.
+
 ### 3. (Optional) Use the adapter
 
 The trained LoRA adapter is saved locally at:
@@ -215,6 +233,7 @@ uv run python run_train.py --config /path/to/config.yaml --train /path/to/train.
 | `No space left on device` | Increase disk size: use `--disk 50` for 7B models |
 | `Disk quota exceeded` | Instance needs more disk. Destroy and recreate with `--disk 50` |
 | Instance stuck in `loading` > 10 min | Machine has slow Docker pull. Destroy and pick one with higher `net_up` (>2000 Mbps). See [Picking a GPU](#1-pick-a-gpu) for guidance. |
+| `PicklingError: Can't pickle SFTConfig` | Unsloth's compiled cache creates a duplicate `SFTConfig` class. The adapter weights (`adapter_model.safetensors`) save correctly — only `training_args.bin` (not needed for inference) fails. A monkey-patch is applied in `src/trainer.py` to skip this file. |
 
 ---
 
