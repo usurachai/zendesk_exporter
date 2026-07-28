@@ -1,7 +1,11 @@
 # Inference - Testing with llama.cpp
 
-Test the fine-tuned Qwen2.5-1.5B-Instruct LoRA adapter locally
-using llama.cpp (CPU inference, no GPU needed).
+Test the fine-tuned LoRA adapter locally using llama.cpp (CPU inference, no GPU needed).
+
+> **Model choice:** The 1.5B adapter (~35 MB) runs well on any CPU with ~5 GB RAM.
+> The 7B adapter can also be used but requires ~8 GB RAM for the Q4_K_M GGUF and
+> runs at ~1-2 tokens/sec on CPU. For the 7B adapter, substitute `Qwen2.5-7B`
+> for `Qwen2.5-1.5B` in all commands below.
 
 ## Prerequisites
 
@@ -146,6 +150,7 @@ trained with a different base model version.
 ## Performance Notes
 
 - CPU-only inference on Qwen2.5-1.5B: ~2-5 tokens/sec (slow)
+- CPU-only inference on Qwen2.5-7B (Q4_K_M GGUF): ~1-2 tokens/sec (very slow)
 - For faster testing, use a GPU instance on vast.ai with the adapter
 - The adapter (~35 MB) is much smaller than the full model (~3 GB)
 - Quantized models (Q4/Q8) are faster but may reduce quality

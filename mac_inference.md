@@ -1,7 +1,11 @@
 # Inference on MacBook M1 (16 GB RAM)
 
 Run the fine-tuned Zendesk support model locally on Apple Silicon.
-The 1.5B model fits easily in 16 GB RAM (~4 GB used).
+The 1.5B adapter fits easily in 16 GB RAM (~4 GB used).
+
+> **7B model note:** The 7B adapter requires ~16 GB in 4-bit — it works on 32 GB MacBooks
+> but may run out of memory on 16 GB machines. For 16 GB Macs, stick with the 1.5B adapter.
+> Both adapters are available on HuggingFace (see links below).
 
 ---
 
@@ -20,6 +24,10 @@ import torch
 model = AutoModelForCausalLM.from_pretrained("unsloth/Qwen2.5-1.5B-Instruct")
 model = PeftModel.from_pretrained(model, "usurachai/zendesk-support-qwen2.5-1.5b-lora")
 tokenizer = AutoTokenizer.from_pretrained("unsloth/Qwen2.5-1.5B-Instruct")
+# For 7B (32 GB Mac only):
+# model = AutoModelForCausalLM.from_pretrained("unsloth/Qwen2.5-7B-Instruct")
+# model = PeftModel.from_pretrained(model, "usurachai/zendesk-support-qwen2.5-7b-lora")
+# tokenizer = AutoTokenizer.from_pretrained("unsloth/Qwen2.5-7B-Instruct")
 
 messages = [
     {"role": "system", "content": "You are a polite customer support agent for a Thai company."},
@@ -57,8 +65,9 @@ pip install transformers peft huggingface_hub sentencepiece
 ### 2. Download the Adapter (optional — PEFT can stream it)
 
 ```bash
-# HuggingFace repo: usurachai/zendesk-support-qwen2.5-1.5b-lora
-# Size: 81 MB (adapter_model.safetensors = 70.5 MB, tokenizer = 10.9 MB)
+# HuggingFace repos:
+# 1.5B: usurachai/zendesk-support-qwen2.5-1.5b-lora (81 MB)
+# 7B:   usurachai/zendesk-support-qwen2.5-7b-lora (173 MB — 32 GB Mac only)
 
 # Option A: Stream from HuggingFace (no manual download needed)
 # PEFT loads the adapter on-the-fly — skip this step entirely.
