@@ -8,7 +8,7 @@
 # USAGE:
 #   ./vast_run.sh <INSTANCE_ID>              # Run on an already-rented instance
 #   ./vast_run.sh --rent <INSTANCE_ID>       # Rent + run + auto-destroy
-#   ./vast_run.sh --rent <INSTANCE_ID> --disk 40  # Override disk size (default: 20)
+#   ./vast_run.sh --rent <INSTANCE_ID> --disk 50  # Override disk size (default: 50)
 #
 # PREREQUISITES:
 #   - vastai CLI installed and configured (API key with credits)

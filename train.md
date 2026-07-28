@@ -93,7 +93,7 @@ If you prefer to run each step manually:
 ### 1. Pick a GPU
 
 ```bash
-vastai search offers 'compute_cap >= 890 gpu_ram >= 16 num_gpus=1 reliability >= 0.95'
+vastai search offers 'compute_cap >= 890 gpu_ram >= 16 num_gpus=1 reliability >= 0.95 disk_space >= 50'
 ```
 
 ### 2. Create the tarball (on your machine)
