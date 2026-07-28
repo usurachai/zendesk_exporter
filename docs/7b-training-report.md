@@ -52,7 +52,7 @@ Source: Historical Zendesk Facebook Messenger (Sunshine Conversations) conversat
 | LoRA alpha | 16 |
 | LoRA dropout | 0.1 |
 | Target modules | q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj |
-| Trainable params | 18,464,768 / 1,562,179,072 (**1.18%**) |
+| Trainable params | ~50,593,792 / 7,620,000,000 (**~0.66%**) |
 | Precision | bf16 (Ampere+ GPU) |
 
 ### Training Hyperparameters
@@ -70,7 +70,7 @@ Source: Historical Zendesk Facebook Messenger (Sunshine Conversations) conversat
 | Max seq length | 2,048 tokens |
 | Logging steps | 1 |
 | Eval steps | 50 |
-| Save steps | 100 (disabled via monkey-patch, see §7) |
+| Save steps | 100 (overridden to 250 > 226 total steps, see §7) |
 
 ### Infrastructure
 
@@ -157,7 +157,7 @@ Step 226: loss=0.90  (final)
 
 ## 7. Known Issues
 
-### Pickle Error on `training_args.bin` (Resolved)
+### Pickle Error on `training_args.bin` (Known, Not Yet Fixed)
 
 **Root cause:** Unsloth's `unsloth_compiled_cache/` bytecode compilation duplicates the `trl.trainer.sft_config.SFTConfig` class in memory. When `transformers.Trainer._save()` calls `torch.save(self.args, "training_args.bin")`, pickle detects the class identity mismatch and raises:
 
@@ -168,7 +168,9 @@ _pickle.PicklingError: Can't pickle <class 'trl.trainer.sft_config.SFTConfig'>:
 
 **Impact:** Only `training_args.bin` is affected. The adapter weights (`adapter_model.safetensors`) save correctly. The `training_args.bin` file is not needed for inference.
 
-**Fix:** A monkey-patch in `src/trainer.py` intercepts the pickle error and skips only `training_args.bin` saves, allowing checkpoints and final save to complete normally.
+**Workaround:** Set `save_steps` beyond total training steps (e.g., 250 > 226) so the trainer skips mid-training checkpoint saves. The final epoch-end save still fires the pickle error, but the adapter weights are written to disk before `training_args.bin` is attempted — so the checkpoint directory contains all needed files.
+
+**Planned fix:** A monkey-patch in `src/trainer.py` to intercept the pickle error and skip only `training_args.bin` saves. Not yet implemented as of this report.
 
 ### 7B Model Disk Requirements
 
