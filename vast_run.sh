@@ -8,7 +8,7 @@
 # USAGE:
 #   ./vast_run.sh <INSTANCE_ID>              # Run on an already-rented instance
 #   ./vast_run.sh --rent <INSTANCE_ID>       # Rent + run + auto-destroy
-#   ./vast_run.sh --rent <INSTANCE_ID> --disk 40  # Override disk size (default: 20)
+#   ./vast_run.sh --rent <INSTANCE_ID> --disk 50  # Override disk size (default: 50)
 #
 # PREREQUISITES:
 #   - vastai CLI installed and configured (API key with credits)
@@ -36,8 +36,8 @@ REMOTE_WORKSPACE="/workspace/zendesk_exporter"
 # --- Config ---
 RENT_MODE=false
 INSTANCE_ID=""
-DISK_GB=20
-IMAGE="pytorch/pytorch:2.4.0-cuda12.1-cudnn9-devel"
+DISK_GB=50
+IMAGE="pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime"
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -94,7 +94,7 @@ if $RENT_MODE; then
         --ssh
 
     echo "[vast_run] Waiting for instance to be ready..."
-    for i in $(seq 1 30); do
+    for i in $(seq 1 60); do
         STATUS=$(vastai show instances 2>/dev/null | grep "^$INSTANCE_ID" | awk '{print $3}' || true)
         if [[ "$STATUS" == "running" ]]; then
             echo "[vast_run] Instance $INSTANCE_ID is running."
@@ -104,13 +104,15 @@ if $RENT_MODE; then
             echo "[vast_run] ERROR: Instance entered error state."
             exit 1
         fi
-        sleep 3
+        sleep 15
     done
 
     # Final check
     STATUS=$(vastai show instances 2>/dev/null | grep "^$INSTANCE_ID" | awk '{print $3}' || true)
     if [[ "$STATUS" != "running" ]]; then
-        echo "[vast_run] ERROR: Instance did not become running after 90s."
+        echo "[vast_run] ERROR: Instance did not become running after 15 minutes."
+        echo "[vast_run] You can check status with: vastai show instances"
+        echo "[vast_run] Or manually continue once it's ready."
         exit 1
     fi
 

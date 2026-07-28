@@ -1,6 +1,7 @@
 # Training — Remote Execution on vast.ai
 
-Fine-tune Qwen2.5-1.5B-Instruct on the prepared dataset (`data/train.jsonl` + `data/valid.jsonl`) using Unsloth LoRA.
+Fine-tune Qwen2.5-1.5B-Instruct or Qwen2.5-7B-Instruct on the prepared dataset
+(`data/train.jsonl` + `data/valid.jsonl`) using Unsloth LoRA on vast.ai GPU instances.
 
 ## Prerequisites
 
@@ -22,15 +23,29 @@ No manual intervention needed. Run it and come back when it finishes.
 
 ### 1. Pick a GPU
 
-Search for a cost-effective GPU with enough VRAM:
+Search for a cost-effective GPU with enough VRAM and a fast network connection:
 
 ```bash
-vastai search offers 'compute_cap >= 890 gpu_ram >= 16 num_gpus=1 reliability >= 0.95'
+vastai search offers 'compute_cap >= 890 gpu_ram >= 16 num_gpus=1 reliability >= 0.95 disk_space >= 50' --order 'dph_total'
 ```
 
 - **Recommended:** RTX 4090 (24 GB) or RTX 3090 — ~$0.30/hr
-- Qwen2.5-1.5B uses ~6-8 GB VRAM with 4-bit LoRA
+- **Network matters:** Prefer machines with `net_up > 2000 Mbps` for fast Docker pulls.
+  Slow network leads to 10-15 minute boot delays.
 - Note the **instance ID** of your chosen offer
+
+#### Model vs Disk Size
+
+| Model | 4-bit VRAM | Min Disk | Notes |
+|-------|-----------|----------|-------|
+| Qwen2.5-1.5B | ~4-6 GB | 30 GB | Fits in budget instances |
+| Qwen2.5-7B | ~16-18 GB | 50 GB | Model download alone is ~14 GB |
+
+Override disk size with `--disk` flag if needed:
+```bash
+./vast_run.sh --rent <INSTANCE_ID> --disk 50  # 7B models
+./vast_run.sh --rent <INSTANCE_ID> --disk 30  # 1.5B models
+```
 
 ### 2. Run (rent + train + download + destroy)
 
@@ -40,14 +55,32 @@ vastai search offers 'compute_cap >= 890 gpu_ram >= 16 num_gpus=1 reliability >=
 
 This single command:
 1. Creates the tarball automatically (if not already at `/tmp/zendesk_exporter.tar.gz`)
-2. Rents the instance with the pytorch image
-3. Waits for it to be ready
+2. Rents the instance with the pytorch image (defaults to 50 GB disk)
+3. Waits up to 15 minutes for the instance to boot (Docker image pull)
 4. Uploads the repo
-5. Runs training (~30-45 min on RTX 4090)
+5. Runs training (~30-45 min on RTX 4090, longer for 7B)
 6. Downloads the adapter weights to `./adapters/`
 7. Destroys the instance to stop billing
 
-**Cost:** ~$0.13-0.19 total for a 30-45 min run on RTX 4090.
+**Cost:** ~$0.15-0.25 total for a 30-45 min run on RTX 4090.
+
+### 7B Training Performance (Actual)
+
+| Metric | Value |
+|--------|-------|
+| Model | Qwen2.5-7B-Instruct (4-bit LoRA) |
+| GPU | RTX 4090 (24 GB VRAM) |
+| Dataset | 1,808 train / 206 validation |
+| Epochs | 2 (226 steps) |
+| Duration | **28 minutes** |
+| Cost | **~$0.19** ($0.4144/hr) |
+| Training loss | 2.18 → 0.90 |
+| Eval loss | 1.21 → 1.01 → 0.94 → 0.90 |
+| Adapter size | 161 MB |
+
+**Loss curve (eval, per 50 steps):** `1.211 → 1.009 → 0.9368 → 0.9063 → 0.8999`
+
+Training time is dominated by the 7B model forward pass (~2.67s/step). The 1.5B model trains ~2× faster on the same GPU.
 
 ### 3. (Optional) Use the adapter
 
@@ -62,7 +95,7 @@ You can load it for inference with:
 ```python
 from unsloth import FastLanguageModel
 model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name="unsloth/Qwen2.5-1.5B-Instruct",
+    model_name="unsloth/Qwen2.5-7B-Instruct",
     load_in_4bit=True,
 )
 model = FastLanguageModel.get_peft_model(model, ...)
@@ -78,7 +111,7 @@ If you prefer to run each step manually:
 ### 1. Pick a GPU
 
 ```bash
-vastai search offers 'compute_cap >= 890 gpu_ram >= 16 num_gpus=1 reliability >= 0.95'
+vastai search offers 'compute_cap >= 890 gpu_ram >= 16 num_gpus=1 reliability >= 0.95 disk_space >= 50'
 ```
 
 ### 2. Create the tarball (on your machine)
@@ -99,11 +132,11 @@ tar czf /tmp/zendesk_exporter.tar.gz \
 ```bash
 vastai create instance <INSTANCE_ID> \
   --image pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime \
-  --disk 20 \
+  --disk 50 \
   --ssh
 ```
 
-Wait for status to show `running`:
+Wait for status to show `running` (can take 5-15 minutes for Docker pull):
 
 ```bash
 vastai show instances
@@ -154,7 +187,7 @@ Edit [`config/config.yaml`](config/config.yaml) before training to adjust:
 
 | Key | Default | Notes |
 |-----|---------|-------|
-| `base_model` | `unsloth/Qwen2.5-1.5B-Instruct` | Model to fine-tune |
+| `base_model` | `unsloth/Qwen2.5-7B-Instruct` | Model to fine-tune (1.5B and 0.5B also supported) |
 | `max_seq_length` | `2048` | Max token length per example |
 | `load_in_4bit` | `true` | 4-bit quantization (saves VRAM) |
 | `bf16` | `true` | Use bf16 precision (more stable than fp16 on Ampere+ GPUs) |
@@ -181,6 +214,8 @@ uv run python run_train.py --config /path/to/config.yaml --train /path/to/train.
 | Use `vast_run.sh --rent` | Auto-destroys instance → no over-billing |
 | Pre-create tarball before renting | Saves ~30s of billing |
 | Reduce `per_device_train_batch_size` | Lower VRAM = cheaper GPU tier |
+| Use `--disk 50` for 7B models | Default is 50GB (sufficient for 7B) |
+| Use `--disk 30` for 1.5B models | Smaller disk for smaller models |
 
 ---
 
@@ -195,6 +230,10 @@ uv run python run_train.py --config /path/to/config.yaml --train /path/to/train.
 | `uv: command not found` | Run `pip install uv` first (already in the script) |
 | Training is slow | Check GPU utilization: `vastai exec <ID> "nvidia-smi"` |
 | No weights downloaded | Check if training completed: `vastai exec <ID> "ls -la /workspace/adapters/"` |
+| `No space left on device` | Increase disk size: use `--disk 50` for 7B models |
+| `Disk quota exceeded` | Instance needs more disk. Destroy and recreate with `--disk 50` |
+| Instance stuck in `loading` > 10 min | Machine has slow Docker pull. Destroy and pick one with higher `net_up` (>2000 Mbps). See [Picking a GPU](#1-pick-a-gpu) for guidance. |
+| `PicklingError: Can't pickle SFTConfig` | Unsloth's compiled cache creates a duplicate `SFTConfig` class. The adapter weights (`adapter_model.safetensors`) save correctly — only `training_args.bin` (not needed for inference) fails. A monkey-patch is applied in `src/trainer.py` to skip this file. |
 
 ---
 

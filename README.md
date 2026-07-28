@@ -1,34 +1,35 @@
 # Zendesk AI Customer Support Fine-tuning Platform
 
-Fine-tune Qwen2.5-1.5B-Instruct on historical Zendesk Facebook Messenger conversations using LoRA (Unsloth) to automate Level-1 Thai customer support responses.
+Fine-tune Qwen2.5-7B-Instruct (or Qwen2.5-1.5B-Instruct) on historical Zendesk Facebook Messenger conversations using LoRA (Unsloth) to automate Level-1 Thai customer support responses.
 
 **MVP — not a production chatbot.**
 
 
 ---
 
-## Trained Model
+## Trained Models
 
-The LoRA adapter is trained on Qwen2.5-1.5B-Instruct and available on HuggingFace:
+LoRA adapters trained on historical Zendesk Facebook Messenger conversations, available on HuggingFace:
 
-**[usurachai/zendesk-support-qwen2.5-1.5b-lora](https://huggingface.co/usurachai/zendesk-support-qwen2.5-1.5b-lora)**
-
-| Detail | Value |
-|--------|-------|
-| Base model | `unsloth/Qwen2.5-7B-Instruct` (default) |
-| Training | 3 epochs, 24 steps, loss 2.35 → 1.69 |
-| Adapter size | ~71 MB (LoRA r=16) |
-| Language | Thai |
+| Model | Adapter | Size | Training | Eval Loss |
+|-------|---------|------|----------|-----------|
+| Qwen2.5-7B-Instruct | **[usurachai/zendesk-support-qwen2.5-7b-lora](https://huggingface.co/usurachai/zendesk-support-qwen2.5-7b-lora)** | 161 MB | 2 epochs, 226 steps, 28 min (RTX 4090) | 2.70 → 0.90 |
+| Qwen2.5-1.5B-Instruct | **[usurachai/zendesk-support-qwen2.5-1.5b-lora](https://huggingface.co/usurachai/zendesk-support-qwen2.5-1.5b-lora)** | 71 MB | 3 epochs | 2.35 → 1.69 |
 
 ### Load from HuggingFace
 
 ```python
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from unsloth import FastLanguageModel
 from peft import PeftModel
 
-base = AutoModelForCausalLM.from_pretrained("unsloth/Qwen2.5-7B-Instruct")
-model = PeftModel.from_pretrained(base, "usurachai/zendesk-support-qwen2.5-1.5b-lora")
-tokenizer = AutoTokenizer.from_pretrained("unsloth/Qwen2.5-7B-Instruct")
+# Load base model in 4-bit
+model, tokenizer = FastLanguageModel.from_pretrained(
+    "unsloth/Qwen2.5-7B-Instruct",
+    load_in_4bit=True,
+)
+
+# Attach LoRA adapter
+model = PeftModel.from_pretrained(model, "usurachai/zendesk-support-qwen2.5-7b-lora")
 ```
 
 ### Run locally
@@ -251,7 +252,7 @@ Converts raw tickets into Unsloth-format conversation data with quality cleanup.
 
 ### 3. Trainer (`run_train.py`)
 
-Fine-tunes Qwen2.5-1.5B-Instruct with LoRA using Unsloth.
+Fine-tunes Qwen2.5-7B-Instruct (or Qwen2.5-1.5B-Instruct) with LoRA using Unsloth.
 
 - 4-bit quantization for memory efficiency
 - Configurable LoRA rank, alpha, target modules
@@ -292,7 +293,7 @@ Interactive CLI to test the fine-tuned model (requires GPU or CPU with enough RA
 **Other inference options:**
 - **llama.cpp** (CPU, Linux): [llamacpp.md](llamacpp.md) — convert adapter to GGUF, run with `llama-cli`
 - **MacBook M1**: [mac_inference.md](mac_inference.md) — Ollama, llama.cpp, LM Studio, or Python
-- **HuggingFace**: Load adapter directly from `usurachai/zendesk-support-qwen2.5-1.5b-lora`
+- **HuggingFace**: Load adapter directly from `usurachai/zendesk-support-qwen2.5-7b-lora` (7B) or `usurachai/zendesk-support-qwen2.5-1.5b-lora` (1.5B)
 
 ---
 
