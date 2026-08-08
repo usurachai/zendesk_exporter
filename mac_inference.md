@@ -304,7 +304,7 @@ Pick a GGUF quant based on how much headroom you want. Smaller quant = less RAM,
 | Q2_K | 3.0 GB | ~5-6 GB | degraded | weak machines, "make it fit no matter what" |
 
 **Other levers on a 16 GB Mac:**
-- **KV cache / context (`-c`)**: smaller context = smaller KV cache (Qwen2.5-7B, 28 layers, ~0.45 GB per 2k context). Use `-c 2048` for support-style short prompts.
+- **KV cache / context (`-c`)**: smaller context = smaller KV cache (Qwen2.5-7B: 28 layers, ~0.1 GB per 2k tokens with fp16 cache). Use `-c 2048` for support-style short prompts.
 - **Metal offload (`-ngl`)**: with Q4_K_M 7B (~7-9 GB total) you can offload all layers (`-ngl 64`) on 16 GB. Lower it only if you hit memory pressure while multitasking.
 - **`mmap`**: llama.cpp memory-maps the model; keep the GGUF on an SSD (not a nearly-full disk) so paging is fast.
 
