@@ -156,17 +156,24 @@ brew install llama.cpp
 ```bash
 mkdir -p ~/models
 
-# 7B (~4.7 GB) — recommended quality:
+# 7B (~4.7 GB) — recommended quality.
+# NOTE: the official Qwen repo shards the 7B Q4_K_M into two parts, so it has no single
+# `qwen2.5-7b-instruct-q4_k_m.gguf` file. The single-file source below is bartowski's
+# (UNGATED, 185K+ downloads, llama.cpp-ready):
 curl -L -o ~/models/qwen2.5-7b-instruct-q4_k_m.gguf \
-  https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_k_m.gguf
+  https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf
 
-# 1.5B (~1 GB) — for 16 GB Macs:
+# 1.5B (~1 GB) — for 16 GB Macs (official Qwen repo has this as a single file):
 # curl -L -o ~/models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
 #   https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
 
 # Alternative: huggingface-cli (more reliable, handles auth)
+# 7B (bartowski single-file):
+# huggingface-cli download bartowski/Qwen2.5-7B-Instruct-GGUF \
+#   Qwen2.5-7B-Instruct-Q4_K_M.gguf --local-dir ~/models
+# 7B (official, sharded — llama.cpp auto-loads both parts):
 # huggingface-cli download Qwen/Qwen2.5-7B-Instruct-GGUF \
-#   qwen2.5-7b-instruct-q4_k_m.gguf --local-dir ~/models
+#   --include 'qwen2.5-7b-instruct-q4_k_m-*.gguf' --local-dir ~/models
 ```
 
 ### 3. Download Adapter and Convert to GGUF
@@ -352,9 +359,9 @@ huggingface-cli download unsloth/Qwen2.5-1.5B-Instruct --local-dir ./qwen-base-1
 
 **GGUF format** (for llama.cpp / Ollama):
 ```bash
-# 7B (~4.7 GB)
-curl -LO https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_k_m.gguf
+# 7B (~4.7 GB) — single-file source (official repo shards 7B Q4_K_M into 2 parts):
+curl -LO https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf
 
-# 1.5B (~1 GB)
+# 1.5B (~1 GB) — official repo has this as a single file:
 curl -LO https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
 ```

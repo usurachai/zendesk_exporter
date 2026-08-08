@@ -292,7 +292,7 @@ Interactive CLI to test the fine-tuned model (requires GPU or CPU with enough RA
 
 **Other inference options:**
 - **llama.cpp** (CPU, Linux): [llamacpp.md](llamacpp.md) — convert adapter to GGUF, run with `llama-cli`
-- **MacBook M1**: [mac_inference.md](mac_inference.md) — Ollama, llama.cpp, LM Studio, or Python
+- **MacBook M1**: [mac_inference.md](mac_inference.md) — Ollama, llama.cpp, LM Studio, or Python (7B fits 16 GB via GGUF Q4_K_M)
 - **HuggingFace**: Load adapter directly from `usurachai/zendesk-support-qwen2.5-7b-lora` (7B) or `usurachai/zendesk-support-qwen2.5-1.5b-lora` (1.5B)
 
 ---
