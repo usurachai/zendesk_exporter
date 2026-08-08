@@ -34,7 +34,7 @@ model = PeftModel.from_pretrained(model, "usurachai/zendesk-support-qwen2.5-7b-l
 
 ### Run locally
 
-- **MacBook M1**: See [mac_inference.md](mac_inference.md) (Python+PEFT, Ollama, llama.cpp, LM Studio) — supports the 7B adapter (~16 GB RAM, 32 GB Macs) and the 1.5B adapter (16 GB Macs)
+- **MacBook M1**: See [mac_inference.md](mac_inference.md) (Python+PEFT, Ollama, llama.cpp, LM Studio) — 7B runs on 16 GB Macs via GGUF (Q4_K_M ~7-9 GB); 7B via Python+PEFT needs 32 GB; 1.5B fits any machine
 - **Linux CPU**: See [llamacpp.md](llamacpp.md) (llama.cpp with LoRA support)
 - **Remote GPU**: See [train.md](train.md) (vast.ai training + inference)
 
