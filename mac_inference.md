@@ -294,7 +294,7 @@ huggingface-cli download usurachai/zendesk-support-qwen2.5-1.5b-lora --local-dir
 Each adapter contains:
 | File | Size | Purpose |
 |------|------|---------|
-| `adapter_model.safetensors` | 161 MB (7B) / 70.5 MB (1.5B) | LoRA weights (rank=16, alpha=32) |
+| `adapter_model.safetensors` | 161 MB (7B) / 70.5 MB (1.5B) | LoRA weights (rank=16, alpha=16) |
 | `tokenizer.json` | 10.9 MB | Qwen2.5 tokenizer (must match base model) |
 | `adapter_config.json` | 1.3 KB | LoRA hyperparameters |
 | `chat_template.jinja` | 2.5 KB | Prompt template |
